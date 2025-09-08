@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "notes-editor-backend"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-ihcx3sfnp6rh"
+s3_prefix = "notes-editor-backend"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []

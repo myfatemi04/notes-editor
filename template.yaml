@@ -16,7 +16,6 @@ Resources:
         AllowHeaders: "'*'"
         AllowOrigin: "'*'"
         MaxAge: "'600'"
-        AllowCredentials: true
   RemoteApiFunction:
     Type: AWS::Serverless::Function
     Properties:
