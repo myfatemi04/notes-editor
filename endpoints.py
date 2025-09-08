@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional
 
 from remote import Remote
-from secret import AUTHOR_EMAIL, AUTHOR_NAME, GITHUB_TOKEN
+from secret import AUTHOR_EMAIL, AUTHOR_NAME, GITHUB_TOKEN, ACCESS_TOKEN
 
 # ---------------------------
 # Config (from environment)
@@ -213,6 +213,10 @@ def handler(event, context) -> Dict[str, Any]:
         # CORS preflight
         if http_method == "OPTIONS":
             return _json_response(204, {})
+
+        auth_header = event.get("headers", {}).get("Authorization")
+        if auth_header != f"Bearer {ACCESS_TOKEN}":
+            return _json_response(401, {"error": "Unauthorized"})
 
         # Routing
         if http_method == "GET" and path == "/health":
