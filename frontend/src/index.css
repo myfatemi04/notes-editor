@@ -17,7 +17,9 @@
 html,
 body,
 #root {
-  height: 100%;
+  height: 100vh;
+  width: 100vw;
+  padding: 0;
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -25,6 +27,11 @@ body,
     monospace;
   font-size: 14px;
   line-height: 1.4;
+}
+
+html {
+  /* There is some bug in react-markdown that makes it overflow. */
+  overflow: hidden;
 }
 
 .app {

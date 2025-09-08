@@ -27,7 +27,6 @@ const TreeNode: React.FC<NodeProps> = ({ name, subtree, prefix, onOpen }) => {
           {isDir ? "DIR" : "TXT"}
         </span>
         <span>{name}</span>
-        {!isDir && <span className="meta"> — {fullPath}</span>}
       </div>
       {isDir && open && subtree && (
         <ul>
