@@ -30,7 +30,10 @@ export const Editor: React.FC<EditorProps> = ({
         />
       </div>
       {/* Markdown preview */}
-      <div style={{ flex: 1, borderLeft: 0 }} className="textarea">
+      <div
+        style={{ flex: 1, borderLeft: 0, overflowY: "auto" }}
+        className="textarea"
+      >
         <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
           {value}
         </Markdown>
