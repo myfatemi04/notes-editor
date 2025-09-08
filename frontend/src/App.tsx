@@ -1,0 +1,149 @@
+import React from "react";
+import { api } from "./lib/api";
+import { FileTree } from "./lib/types";
+import { FileTreeView } from "./components/FileTree";
+import { Editor } from "./components/Editor";
+
+export default function App() {
+  const [tree, setTree] = React.useState<FileTree | null>(null);
+  const [currentPath, setCurrentPath] = React.useState<string>("");
+  const [content, setContent] = React.useState<string>("");
+  const [savedContent, setSavedContent] = React.useState<string>("");
+  const [loading, setLoading] = React.useState<boolean>(false);
+  const [saving, setSaving] = React.useState<boolean>(false);
+  const [error, setError] = React.useState<string>("");
+
+  const dirty = content !== savedContent && currentPath.length > 0;
+
+  React.useEffect(() => {
+    (async () => {
+      setError("");
+      try {
+        const data = await api.listFiles();
+        setTree(data.files);
+      } catch (e: any) {
+        setError(e.message || String(e));
+      }
+    })();
+  }, []);
+
+  async function openFile(path: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api.getFile(path);
+      setCurrentPath(path);
+      setContent(data.content ?? "");
+      setSavedContent(data.content ?? "");
+    } catch (e: any) {
+      setError(e.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveFile() {
+    if (!currentPath || !dirty) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.saveFile({
+        path: currentPath,
+        content,
+        message: `Edit ${currentPath}`,
+      });
+      setSavedContent(content);
+    } catch (e: any) {
+      setError(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Ctrl/Cmd+S
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveFile();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [content, currentPath, dirty]);
+
+  const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
+
+  return (
+    <div className="app">
+      <div className="header">
+        <div className="brand">Remote File Viewer</div>
+        <div className="toolbar">
+          <button className="button" onClick={() => window.location.reload()}>
+            Refresh
+          </button>
+          <button
+            className="button primary"
+            onClick={saveFile}
+            disabled={!dirty || saving}
+          >
+            {saving ? "Saving..." : "Save (⌘/Ctrl+S)"}
+          </button>
+        </div>
+      </div>
+
+      <aside className="sidebar">
+        {tree ? (
+          <FileTreeView tree={tree} onOpen={openFile} />
+        ) : (
+          <div style={{ padding: 12 }}>Loading tree…</div>
+        )}
+      </aside>
+
+      <main className="main">
+        <div className="pathbar">
+          <span>Path:</span>
+          {currentPath ? (
+            <>
+              {crumbs.map((c, i) => (
+                <span
+                  key={i}
+                  className={`crumb ${i === crumbs.length - 1 ? "active" : ""}`}
+                >
+                  {i > 0 && <span style={{ margin: "0 6px" }}>/</span>}
+                  {c}
+                </span>
+              ))}
+              {dirty && <span className="badge warn">unsaved</span>}
+            </>
+          ) : (
+            <span className="crumb">— Select a file</span>
+          )}
+        </div>
+
+        <Editor
+          value={content}
+          onChange={setContent}
+          disabled={!currentPath || loading}
+        />
+      </main>
+
+      <footer className="footer">
+        <span>Status:</span>
+        {error ? (
+          <span className="badge warn" title={error}>
+            {error}
+          </span>
+        ) : saving ? (
+          <span className="badge">Saving…</span>
+        ) : dirty ? (
+          <span className="badge warn">Unsaved changes</span>
+        ) : currentPath ? (
+          <span className="badge">Saved</span>
+        ) : (
+          <span className="badge">Idle</span>
+        )}
+      </footer>
+    </div>
+  );
+}
