@@ -1,26 +1,27 @@
-import React from "react";
-import { api } from "./lib/api";
-import { FileTree } from "./lib/types";
-import { FileTreeView } from "./components/FileTree";
+import { useEffect, useState } from "react";
 import { Editor } from "./components/Editor";
+import { FileTreeView } from "./components/FileTree";
 import {
   CreateFileModal,
-  RenameFileModal,
   DeleteFileModal,
+  RenameFileModal,
 } from "./components/Modals";
+import { api } from "./lib/api";
+import { FileTree } from "./lib/types";
 
 export default function App() {
-  const [tree, setTree] = React.useState<FileTree | null>(null);
-  const [currentPath, setCurrentPath] = React.useState<string>("");
-  const [content, setContent] = React.useState<string>("");
-  const [savedContent, setSavedContent] = React.useState<string>("");
-  const [loading, setLoading] = React.useState<boolean>(false);
-  const [saving, setSaving] = React.useState<boolean>(false);
-  const [error, setError] = React.useState<string>("");
+  const [tree, setTree] = useState<FileTree | null>(null);
+  const [currentPath, setCurrentPath] = useState<string>("");
+  const [content, setContent] = useState<string>("");
+  const [savedContent, setSavedContent] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-  const [showCreate, setShowCreate] = React.useState(false);
-  const [showRename, setShowRename] = React.useState(false);
-  const [showDelete, setShowDelete] = React.useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
   const dirty = content !== savedContent && currentPath.length > 0;
 
@@ -44,7 +45,7 @@ export default function App() {
     }
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     void refreshTree();
   }, []);
 
@@ -83,7 +84,7 @@ export default function App() {
   }
 
   // Shortcuts
-  React.useEffect(() => {
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();

@@ -1,15 +1,26 @@
 import {
-  FilesResponse,
+  CreateRequest,
+  DeleteResponse,
   FileContentResponse,
+  FilesResponse,
+  RenameRequest,
   SaveRequest,
   SaveResponse,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL as string;
 
+function getAccessToken(): string {
+  return localStorage.getItem("access_token") || "";
+}
+
 async function http<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const res = await fetch(input, {
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + getAccessToken(),
+      ...(init?.headers || {}),
+    },
     ...init,
   });
   if (!res.ok) {
