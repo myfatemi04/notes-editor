@@ -205,6 +205,7 @@ export default function App() {
               });
               setShowCreate(false);
               await refreshTree(path);
+              setError("");
             } catch (e: any) {
               setError(e.message || String(e));
             }
@@ -226,6 +227,7 @@ export default function App() {
               });
               setShowRename(false);
               await refreshTree(dst);
+              setError("");
             } catch (e: any) {
               setError(e.message || String(e));
             }
@@ -245,6 +247,7 @@ export default function App() {
               setContent("");
               setSavedContent("");
               await refreshTree();
+              setError("");
             } catch (e: any) {
               setError(e.message || String(e));
             }
