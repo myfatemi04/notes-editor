@@ -120,8 +120,12 @@ class Remote:
             updated_base_tree_oid = next_dir_tree_builder.write()
             base_tree = cast(pygit2.Tree, self.repo[updated_base_tree_oid])
             next_dir_node = self.repo[next_dir_oid]
+
+            print("Creating tree", parts[0])
         elif next_dir_node.filemode != GITMODE_TREE:
             raise KeyError(f"Path component is not a directory: {parts[0]}")
+        else:
+            print("Walking into", parts[0])
 
         assert isinstance(next_dir_node, pygit2.Tree)
 
@@ -261,6 +265,11 @@ class Remote:
                 "mode": GITMODE_FILE,
                 "fail_if_exists": fail_if_exists,
             },
+        )
+        new_tree_oid = self._deep_update(
+            cast(pygit2.Tree, self.repo[new_tree_oid]),
+            src_path.split("/"),
+            {"type": "delete"},
         )
         new_commit_oid = self._new_commit(
             message or f"Rename {src_path} to {dst_path}",
