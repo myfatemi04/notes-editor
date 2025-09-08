@@ -4,40 +4,39 @@ Description: Notes Editor API
 
 Globals:
   Function:
-    Runtime: python3.11
-    Timeout: 60
-    MemorySize: 1024
-    Architectures: [x86_64]
-    Environment:
-      Variables:
-        REMOTE_URI: https://github.com/myfatemi04/notes.git
-        GIT_REF: refs/heads/main
-
+    Timeout: 3
+    MemorySize: 128
 Resources:
   RemoteApiFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Environment:
+        Variables:
+          REMOTE_URI: https://github.com/myfatemi04/notes.git
+          GIT_REF: refs/heads/main
       CodeUri: .
       Handler: endpoints.handler
+      Runtime: python3.9
+      Architectures: [x86_64]
       Events:
         Health:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /health, Method: GET }
         Files:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /files, Method: GET }
         GetFile:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /file, Method: GET }
         PutFile:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /file, Method: PUT }
         CreateFile:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /file/create, Method: POST }
         RenameFile:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /file/rename, Method: POST }
         DeleteFile:
-          Type: HttpApi
+          Type: Api
           Properties: { Path: /file, Method: DELETE }

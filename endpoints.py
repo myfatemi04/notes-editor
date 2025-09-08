@@ -1,12 +1,6 @@
-import base64
 import json
 import os
-import sys
-import time
 from typing import Any, Dict, Optional
-
-import boto3
-from botocore.exceptions import ClientError
 
 from remote import Remote
 from secret import GITHUB_TOKEN
