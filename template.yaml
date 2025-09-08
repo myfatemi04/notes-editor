@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Notes Editor API
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 60
+    MemorySize: 1024
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        REMOTE_URI: https://github.com/myfatemi04/notes.git
+        GIT_REF: refs/heads/main
+        GITHUB_TOKEN_SECRET_ID: github/pat
+        SECRETS_TTL_SECONDS: "300"
+
+Resources:
+  RemoteApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: endpoints.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:DescribeSecret
+              Resource: arn:aws:secretsmanager:REGION:ACCOUNT:secret:github/pat-*
+      Events:
+        Health:
+          Type: HttpApi
+          Properties: { Path: /health, Method: GET }
+        Files:
+          Type: HttpApi
+          Properties: { Path: /files, Method: GET }
+        GetFile:
+          Type: HttpApi
+          Properties: { Path: /file, Method: GET }
+        PutFile:
+          Type: HttpApi
+          Properties: { Path: /file, Method: PUT }
+        CreateFile:
+          Type: HttpApi
+          Properties: { Path: /file/create, Method: POST }
+        RenameFile:
+          Type: HttpApi
+          Properties: { Path: /file/rename, Method: POST }
+        DeleteFile:
+          Type: HttpApi
+          Properties: { Path: /file, Method: DELETE }
