@@ -12,8 +12,6 @@ Globals:
       Variables:
         REMOTE_URI: https://github.com/myfatemi04/notes.git
         GIT_REF: refs/heads/main
-        GITHUB_TOKEN_SECRET_ID: github/pat
-        SECRETS_TTL_SECONDS: "300"
 
 Resources:
   RemoteApiFunction:
@@ -21,13 +19,6 @@ Resources:
     Properties:
       CodeUri: .
       Handler: endpoints.handler
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-                - secretsmanager:DescribeSecret
-              Resource: arn:aws:secretsmanager:REGION:ACCOUNT:secret:github/pat-*
       Events:
         Health:
           Type: HttpApi

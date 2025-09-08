@@ -8,23 +8,14 @@ from typing import Any, Dict, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from remote import (
-    Remote,
-)  # assumes your earlier Remote class is available and importable
+from remote import Remote
+from secret import GITHUB_TOKEN
 
 # ---------------------------
 # Config (from environment)
 # ---------------------------
 REMOTE_URI = os.environ.get("REMOTE_URI") or os.environ.get("GIT_REMOTE_URI")
 GIT_REF = os.environ.get("GIT_REF", "refs/heads/main")
-
-# Optional: where to fetch the token from
-GITHUB_TOKEN_SECRET_ID = os.environ.get("GITHUB_TOKEN_SECRET_ID")
-GITHUB_TOKEN_SSM_PARAM = os.environ.get("GITHUB_TOKEN_SSM_PARAM")
-SECRETS_TTL_SECONDS = int(os.environ.get("SECRETS_TTL_SECONDS", "300"))
-
-# In-memory cache across warm invocations
-_TOKEN_CACHE = {"value": None, "exp": 0.0}
 
 
 # CORS settings
@@ -36,50 +27,6 @@ CORS_HEADERS = {
 
 # Cache the Remote instance across Lambda invocations
 _REMOTE_SINGLETON: Optional[Remote] = None
-
-
-def _resolve_github_token() -> Optional[str]:
-    """Return a GitHub token from env, Secrets Manager, or SSM, with simple TTL caching."""
-    now = time.time()
-    if _TOKEN_CACHE["value"] and now < _TOKEN_CACHE["exp"]:
-        return _TOKEN_CACHE["value"]
-
-    # Environment variables (fallback / local dev)
-    token = (
-        os.environ.get("GITHUB_TOKEN")
-        or os.environ.get("GH_TOKEN")
-        or os.environ.get("TOKEN")
-    )
-    if token:
-        _TOKEN_CACHE.update({"value": token, "exp": now + SECRETS_TTL_SECONDS})
-        return token
-
-    # Otherwise, use secrets manager
-    try:
-        sm = boto3.client("secretsmanager")
-        resp = sm.get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ID)
-        secret_str = resp.get("SecretString")
-        if secret_str is None:
-            secret_str = base64.b64decode(resp["SecretBinary"]).decode(
-                "utf-8", errors="replace"
-            )
-        try:
-            parsed = json.loads(secret_str)
-            token = (
-                parsed.get("token")
-                or parsed.get("GITHUB_TOKEN")
-                or parsed.get("github_token")
-            )
-        except json.JSONDecodeError:
-            token = secret_str  # plain string secret
-    except ClientError as e:
-        token = None
-
-    if token:
-        _TOKEN_CACHE.update({"value": token, "exp": now + SECRETS_TTL_SECONDS})
-        return token
-
-    return None
 
 
 def _json_response(
@@ -113,10 +60,8 @@ def _get_remote() -> Remote:
     if not REMOTE_URI:
         raise RuntimeError("REMOTE_URI environment variable is not set")
 
-    token = _resolve_github_token()
-
     try:
-        _REMOTE_SINGLETON = Remote(REMOTE_URI, ref=GIT_REF, token=token)  # type: ignore[arg-type]
+        _REMOTE_SINGLETON = Remote(REMOTE_URI, ref=GIT_REF, token=GITHUB_TOKEN)  # type: ignore[arg-type]
     except TypeError:
         _REMOTE_SINGLETON = Remote(REMOTE_URI, ref=GIT_REF)  # type: ignore[call-arg]
 
