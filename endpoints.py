@@ -172,6 +172,31 @@ def _handle_delete_file(event: Dict[str, Any]) -> Dict[str, Any]:
     return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
 
 
+def _handle_rename_file(event: Dict[str, Any]) -> Dict[str, Any]:
+    data = _parse_json_body(event)
+    src = data.get("src") or data.get("source") or data.get("from")
+    dst = data.get("dst") or data.get("destination") or data.get("to")
+    message = data.get("message")
+    fail_if_exists = bool(data.get("fail_if_exists", True))
+
+    if not src or not dst:
+        return _bad_request("JSON body must include 'src' and 'dst'")
+
+    r = _get_remote()
+    try:
+        new_sha = r.rename_file(
+            src, dst, message=message, push=True, fail_if_exists=fail_if_exists
+        )
+    except KeyError as e:
+        return _json_response(400, {"error": str(e), "src": src, "dst": dst})
+    except Exception as e:
+        return _json_response(500, {"error": "Rename failed", "detail": str(e)})
+
+    return _json_response(
+        200, {"ref": GIT_REF, "src": src, "dst": dst, "commit": new_sha}
+    )
+
+
 def handler(event, context) -> Dict[str, Any]:
     """
     AWS Lambda handler for API Gateway proxy events.
@@ -220,6 +245,10 @@ def handler(event, context) -> Dict[str, Any]:
         # Optional: POST /file/delete for clients without DELETE support
         if http_method == "POST" and path == "/file/delete":
             return _handle_delete_file(event)
+
+        # Rename route
+        if http_method == "POST" and path == "/file/rename":
+            return _handle_rename_file(event)
 
         return _json_response(
             404, {"error": "Not found", "method": http_method, "path": path}
