@@ -43,8 +43,6 @@ export const Editor: React.FC<EditorProps> = ({
             height: "100%",
             width: "100%",
             border: 0,
-            // Switch to something easier on the eyes
-            fontFamily: "sans-serif",
           }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -61,7 +59,13 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
       {/* Markdown preview */}
       <div
-        style={{ flex: 1, borderLeft: 0, overflowY: "auto" }}
+        style={{
+          flex: 1,
+          borderLeft: 0,
+          overflowY: "auto",
+          // Switch to something easier on the eyes
+          fontFamily: "sans-serif",
+        }}
         className="textarea"
       >
         <Markdown
