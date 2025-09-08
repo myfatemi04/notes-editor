@@ -4,9 +4,19 @@ Description: Notes Editor API
 
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 5
     MemorySize: 128
 Resources:
+  RemoteApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+        AllowCredentials: true
   RemoteApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -21,22 +31,41 @@ Resources:
       Events:
         Health:
           Type: Api
-          Properties: { Path: /health, Method: GET }
+          Properties:
+            { Path: /health, Method: GET, RestApiId: { Ref: RemoteApiGateway } }
         Files:
           Type: Api
-          Properties: { Path: /files, Method: GET }
+          Properties:
+            { Path: /files, Method: GET, RestApiId: { Ref: RemoteApiGateway } }
         GetFile:
           Type: Api
-          Properties: { Path: /file, Method: GET }
+          Properties:
+            { Path: /file, Method: GET, RestApiId: { Ref: RemoteApiGateway } }
         PutFile:
           Type: Api
-          Properties: { Path: /file, Method: PUT }
+          Properties:
+            { Path: /file, Method: PUT, RestApiId: { Ref: RemoteApiGateway } }
         CreateFile:
           Type: Api
-          Properties: { Path: /file/create, Method: POST }
+          Properties:
+            {
+              Path: /file/create,
+              Method: POST,
+              RestApiId: { Ref: RemoteApiGateway },
+            }
         RenameFile:
           Type: Api
-          Properties: { Path: /file/rename, Method: POST }
+          Properties:
+            {
+              Path: /file/rename,
+              Method: POST,
+              RestApiId: { Ref: RemoteApiGateway },
+            }
         DeleteFile:
           Type: Api
-          Properties: { Path: /file, Method: DELETE }
+          Properties:
+            {
+              Path: /file,
+              Method: DELETE,
+              RestApiId: { Ref: RemoteApiGateway },
+            }

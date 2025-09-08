@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional
 
 from remote import Remote
-from secret import GITHUB_TOKEN
+from secret import AUTHOR_EMAIL, AUTHOR_NAME, GITHUB_TOKEN
 
 # ---------------------------
 # Config (from environment)
@@ -54,10 +54,13 @@ def _get_remote() -> Remote:
     if not REMOTE_URI:
         raise RuntimeError("REMOTE_URI environment variable is not set")
 
-    try:
-        _REMOTE_SINGLETON = Remote(REMOTE_URI, ref=GIT_REF, token=GITHUB_TOKEN)  # type: ignore[arg-type]
-    except TypeError:
-        _REMOTE_SINGLETON = Remote(REMOTE_URI, ref=GIT_REF)  # type: ignore[call-arg]
+    _REMOTE_SINGLETON = Remote(
+        REMOTE_URI,
+        ref=GIT_REF,
+        token=GITHUB_TOKEN,
+        author_name=AUTHOR_NAME,
+        author_email=AUTHOR_EMAIL,
+    )
 
     return _REMOTE_SINGLETON
 

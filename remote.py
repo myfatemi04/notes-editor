@@ -10,7 +10,12 @@ GITMODE_FILE = pygit2.GIT_FILEMODE_BLOB  # type: ignore
 
 class Remote:
     def __init__(
-        self, uri: str, ref: str = "refs/heads/main", token: Optional[str] = None
+        self,
+        uri: str,
+        ref: str = "refs/heads/main",
+        token: Optional[str] = None,
+        author_name: str = "Stateless Bot",
+        author_email: str = "noreply@example.com",
     ):
         """
         Stateless Git remote viewer/editor built on libgit2 (pygit2).
@@ -39,6 +44,8 @@ class Remote:
             credentials=pygit2.UserPass("x-access-token", token) if token else None
         )
         self.remote.fetch([self.ref], depth=1, callbacks=self.callbacks)
+        self.author_name = author_name
+        self.author_email = author_email
 
         # Ensure we have a local ref pointing at the fetched tip
         self._ensure_tracking_ref()
@@ -168,8 +175,6 @@ class Remote:
         self,
         path: str,
         new_content: str,
-        author_name: str = "Stateless Bot",
-        author_email: str = "noreply@example.com",
         message: Optional[str] = None,
         push: bool = True,
     ) -> str:
@@ -189,7 +194,7 @@ class Remote:
         new_tree_oid = self._write_tree_with_update(base_tree, parts, blob_oid)
 
         # Create commit (advancing local ref)
-        sig = pygit2.Signature(author_name, author_email)
+        sig = pygit2.Signature(self.author_name, self.author_email)
         commit_msg = message or f"Update {path}"
         new_commit_oid = self.repo.create_commit(
             self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
@@ -210,8 +215,6 @@ class Remote:
         self,
         path: str,
         content: str,
-        author_name: str = "Stateless Bot",
-        author_email: str = "noreply@example.com",
         message: Optional[str] = None,
         push: bool = True,
         fail_if_exists: bool = True,
@@ -245,7 +248,7 @@ class Remote:
         blob_oid = self.repo.create_blob(content.encode("utf-8"))
         new_tree_oid = self._write_tree_with_update(base_tree, parts, blob_oid)
 
-        sig = pygit2.Signature(author_name, author_email)
+        sig = pygit2.Signature(self.author_name, self.author_email)
         commit_msg = message or f"Create {path}"
         new_commit_oid = self.repo.create_commit(
             self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
@@ -260,8 +263,6 @@ class Remote:
     def delete_file(
         self,
         path: str,
-        author_name: str = "Stateless Bot",
-        author_email: str = "noreply@example.com",
         message: Optional[str] = None,
         push: bool = True,
     ) -> str:
@@ -283,7 +284,7 @@ class Remote:
         else:
             new_tree_oid = new_tree_oid_or_none
 
-        sig = pygit2.Signature(author_name, author_email)
+        sig = pygit2.Signature(self.author_name, self.author_email)
         commit_msg = message or f"Delete {path}"
         new_commit_oid = self.repo.create_commit(
             self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
@@ -346,8 +347,6 @@ class Remote:
         self,
         src_path: str,
         dst_path: str,
-        author_name: str = "Stateless Bot",
-        author_email: str = "noreply@example.com",
         message: Optional[str] = None,
         push: bool = True,
         fail_if_exists: bool = True,
@@ -418,7 +417,7 @@ class Remote:
         )
 
         # Commit
-        sig = pygit2.Signature(author_name, author_email)
+        sig = pygit2.Signature(self.author_name, self.author_email)
         commit_msg = message or f"Rename {src_path} -> {dst_path}"
         new_commit_oid = self.repo.create_commit(
             self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
