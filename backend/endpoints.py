@@ -4,17 +4,18 @@ import traceback
 from typing import Any, Dict, Optional
 
 from remote import Remote
-from secret import AUTHOR_EMAIL, AUTHOR_NAME, GITHUB_TOKEN, ACCESS_TOKEN
-
-# ---------------------------
-# Config (from environment)
-# ---------------------------
-REMOTE_URI = os.environ.get("REMOTE_URI") or os.environ.get("GIT_REMOTE_URI")
-GIT_REF = os.environ.get("GIT_REF", "refs/heads/main")
-
+from secret import (
+    AUTHOR_EMAIL,
+    AUTHOR_NAME,
+    GITHUB_TOKEN,
+    ACCESS_TOKEN,
+    GIT_REF,
+    REMOTE_URI,
+)
 
 # CORS settings
 CORS_HEADERS = {
+    # This should get set automatically by API Gateway anyway
     "Access-Control-Allow-Origin": os.environ.get("CORS_ALLOW_ORIGIN", "*"),
     "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",

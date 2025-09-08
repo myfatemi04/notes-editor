@@ -11,7 +11,7 @@ class Remote:
     def __init__(
         self,
         uri: str,
-        ref: str = "refs/heads/main",
+        ref: str,
         token: Optional[str] = None,
         author_name: str = "Stateless Bot",
         author_email: str = "noreply@example.com",

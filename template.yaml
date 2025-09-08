@@ -19,11 +19,7 @@ Resources:
   RemoteApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Environment:
-        Variables:
-          REMOTE_URI: https://github.com/myfatemi04/notes.git
-          GIT_REF: refs/heads/main
-      CodeUri: .
+      CodeUri: ./backend
       Handler: endpoints.handler
       Runtime: python3.9
       Architectures: [x86_64]
