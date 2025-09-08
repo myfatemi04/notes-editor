@@ -29,13 +29,30 @@ export const api = {
     return http<FilesResponse>(`${BASE}/files`);
   },
   getFile(path: string): Promise<FileContentResponse> {
-    const url = `${BASE}/file?path=${encodeURIComponent(path)}`;
-    return http<FileContentResponse>(url);
+    return http<FileContentResponse>(
+      `${BASE}/file?path=${encodeURIComponent(path)}`
+    );
   },
   saveFile(req: SaveRequest): Promise<SaveResponse> {
     return http<SaveResponse>(`${BASE}/file`, {
       method: "PUT",
       body: JSON.stringify(req),
     });
+  },
+  createFile(req: CreateRequest): Promise<SaveResponse> {
+    return http<SaveResponse>(`${BASE}/file/create`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+  },
+  renameFile(req: RenameRequest): Promise<SaveResponse> {
+    return http<SaveResponse>(`${BASE}/file/rename`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+  },
+  deleteFile(path: string): Promise<DeleteResponse> {
+    const url = `${BASE}/file?path=${encodeURIComponent(path)}`;
+    return http<DeleteResponse>(url, { method: "DELETE" });
   },
 };

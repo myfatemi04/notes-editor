@@ -172,3 +172,56 @@ body,
   border-color: var(--danger);
   color: var(--danger);
 }
+
+.button.danger {
+  background: #fff1f0;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.button.danger:hover {
+  background: #ffe3e0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  width: 520px;
+  max-width: 92vw;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  padding: 12px;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.15);
+}
+.modal h3 {
+  margin: 0 0 8px 0;
+}
+.modal .row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.modal label {
+  min-width: 90px;
+  text-align: right;
+}
+.modal input[type="text"],
+.modal textarea {
+  width: 100%;
+  border: 2px solid var(--border);
+  padding: 6px;
+  background: #fcfcfc;
+  font-family: inherit;
+  font-size: 13px;
+}
+.modal .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}

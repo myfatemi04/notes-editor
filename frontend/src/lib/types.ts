@@ -22,3 +22,21 @@ export interface SaveResponse {
   path: string;
   commit: string;
 }
+
+export interface CreateRequest {
+  path: string;
+  content?: string;
+  message?: string;
+  fail_if_exists?: boolean;
+}
+export interface RenameRequest {
+  src: string;
+  dst: string;
+  message?: string;
+  fail_if_exists?: boolean;
+}
+export interface DeleteResponse {
+  ref: string;
+  path: string;
+  commit: string;
+}

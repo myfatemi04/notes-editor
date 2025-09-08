@@ -3,6 +3,11 @@ import { api } from "./lib/api";
 import { FileTree } from "./lib/types";
 import { FileTreeView } from "./components/FileTree";
 import { Editor } from "./components/Editor";
+import {
+  CreateFileModal,
+  RenameFileModal,
+  DeleteFileModal,
+} from "./components/Modals";
 
 export default function App() {
   const [tree, setTree] = React.useState<FileTree | null>(null);
@@ -13,18 +18,34 @@ export default function App() {
   const [saving, setSaving] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string>("");
 
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [showRename, setShowRename] = React.useState(false);
+  const [showDelete, setShowDelete] = React.useState(false);
+
   const dirty = content !== savedContent && currentPath.length > 0;
 
-  React.useEffect(() => {
-    (async () => {
-      setError("");
-      try {
-        const data = await api.listFiles();
-        setTree(data.files);
-      } catch (e: any) {
-        setError(e.message || String(e));
+  async function refreshTree(keepPath?: string) {
+    try {
+      const data = await api.listFiles();
+      setTree(data.files);
+      if (keepPath) {
+        // best-effort: if we still have the file open, keep it
+        try {
+          const res = await api.getFile(keepPath);
+          setCurrentPath(keepPath);
+          setContent(res.content ?? "");
+          setSavedContent(res.content ?? "");
+        } catch {
+          /* ignore */
+        }
       }
-    })();
+    } catch (e: any) {
+      setError(e.message || String(e));
+    }
+  }
+
+  React.useEffect(() => {
+    void refreshTree();
   }, []);
 
   async function openFile(path: string) {
@@ -53,6 +74,7 @@ export default function App() {
         message: `Edit ${currentPath}`,
       });
       setSavedContent(content);
+      // optional: refresh tree if needed (not required for content changes)
     } catch (e: any) {
       setError(e.message || String(e));
     } finally {
@@ -60,7 +82,7 @@ export default function App() {
     }
   }
 
-  // Ctrl/Cmd+S
+  // Shortcuts
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -79,8 +101,28 @@ export default function App() {
       <div className="header">
         <div className="brand">Remote File Viewer</div>
         <div className="toolbar">
-          <button className="button" onClick={() => window.location.reload()}>
+          <button
+            className="button"
+            onClick={() => void refreshTree(currentPath)}
+          >
             Refresh
+          </button>
+          <button className="button" onClick={() => setShowCreate(true)}>
+            New File
+          </button>
+          <button
+            className="button"
+            onClick={() => setShowRename(true)}
+            disabled={!currentPath}
+          >
+            Rename
+          </button>
+          <button
+            className="button danger"
+            onClick={() => setShowDelete(true)}
+            disabled={!currentPath}
+          >
+            Delete
           </button>
           <button
             className="button primary"
@@ -144,6 +186,66 @@ export default function App() {
           <span className="badge">Idle</span>
         )}
       </footer>
+
+      {showCreate && (
+        <CreateFileModal
+          onClose={() => setShowCreate(false)}
+          onSubmit={async (path, initial, message, fail) => {
+            try {
+              await api.createFile({
+                path,
+                content: initial,
+                message,
+                fail_if_exists: fail,
+              });
+              setShowCreate(false);
+              await refreshTree(path);
+            } catch (e: any) {
+              setError(e.message || String(e));
+            }
+          }}
+        />
+      )}
+
+      {showRename && currentPath && (
+        <RenameFileModal
+          srcPath={currentPath}
+          onClose={() => setShowRename(false)}
+          onSubmit={async (dst, message, fail) => {
+            try {
+              await api.renameFile({
+                src: currentPath,
+                dst,
+                message,
+                fail_if_exists: fail,
+              });
+              setShowRename(false);
+              await refreshTree(dst);
+            } catch (e: any) {
+              setError(e.message || String(e));
+            }
+          }}
+        />
+      )}
+
+      {showDelete && currentPath && (
+        <DeleteFileModal
+          path={currentPath}
+          onClose={() => setShowDelete(false)}
+          onSubmit={async () => {
+            try {
+              await api.deleteFile(currentPath);
+              setShowDelete(false);
+              setCurrentPath("");
+              setContent("");
+              setSavedContent("");
+              await refreshTree();
+            } catch (e: any) {
+              setError(e.message || String(e));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
