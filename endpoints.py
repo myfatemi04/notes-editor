@@ -1,5 +1,6 @@
 import json
 import os
+import traceback
 from typing import Any, Dict, Optional
 
 from remote import Remote
@@ -81,7 +82,7 @@ def _handle_get_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         content = r.get_file_content(path)
     except KeyError as e:
-        return _json_response(404, {"error": str(e), "path": path})
+        return _json_response(404, {"error": traceback.format_exc(), "path": path})
     return _json_response(200, {"ref": GIT_REF, "path": path, "content": content})
 
 
@@ -114,13 +115,23 @@ def _handle_update_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
 
     r = _get_remote()
     try:
-        new_sha = r.update_file_content(path, new_content, message=message, push=True)
+        new_sha = r.update_file_content(
+            path,
+            new_content,
+            message=message,
+            push=True,
+            fail_if_exists=False,
+            fail_if_not_exists=True,
+        )
     except KeyError as e:
         # E.g., an intermediate component is not a directory
-        return _json_response(400, {"error": str(e), "path": path})
+        return _json_response(400, {"error": traceback.format_exc(), "path": path})
     except Exception as e:
         # Generic failure (auth, push rejected, etc.)
-        return _json_response(500, {"error": "Update failed", "detail": str(e)})
+        traceback.print_exc()
+        return _json_response(
+            500, {"error": "Update failed", "detail": traceback.format_exc()}
+        )
 
     return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
 
@@ -135,13 +146,21 @@ def _handle_create_file(event: Dict[str, Any]) -> Dict[str, Any]:
         return _bad_request("JSON body must include 'path'")
     r = _get_remote()
     try:
-        new_sha = r.create_file(
-            path, content, message=message, push=True, fail_if_exists=fail_if_exists
+        new_sha = r.update_file_content(
+            path,
+            content,
+            message=message,
+            push=True,
+            fail_if_exists=fail_if_exists,
+            fail_if_not_exists=False,
         )
     except KeyError as e:
-        return _json_response(409, {"error": str(e), "path": path})
+        return _json_response(409, {"error": traceback.format_exc(), "path": path})
     except Exception as e:
-        return _json_response(500, {"error": "Create failed", "detail": str(e)})
+        traceback.print_exc()
+        return _json_response(
+            500, {"error": "Create failed", "detail": traceback.format_exc()}
+        )
     return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
 
 
@@ -158,9 +177,12 @@ def _handle_delete_file(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         new_sha = r.delete_file(path, push=True)
     except KeyError as e:
-        return _json_response(404, {"error": str(e), "path": path})
+        return _json_response(404, {"error": traceback.format_exc(), "path": path})
     except Exception as e:
-        return _json_response(500, {"error": "Delete failed", "detail": str(e)})
+        traceback.print_exc()
+        return _json_response(
+            500, {"error": "Delete failed", "detail": traceback.format_exc()}
+        )
     return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
 
 
@@ -180,9 +202,14 @@ def _handle_rename_file(event: Dict[str, Any]) -> Dict[str, Any]:
             src, dst, message=message, push=True, fail_if_exists=fail_if_exists
         )
     except KeyError as e:
-        return _json_response(400, {"error": str(e), "src": src, "dst": dst})
+        return _json_response(
+            400, {"error": traceback.format_exc(), "src": src, "dst": dst}
+        )
     except Exception as e:
-        return _json_response(500, {"error": "Rename failed", "detail": str(e)})
+        traceback.print_exc()
+        return _json_response(
+            500, {"error": "Rename failed", "detail": traceback.format_exc()}
+        )
 
     return _json_response(
         200, {"ref": GIT_REF, "src": src, "dst": dst, "commit": new_sha}
@@ -252,11 +279,12 @@ def handler(event, context) -> Dict[str, Any]:
 
     except Exception as e:
         # Catch-all to avoid Lambda's 502 if we raise
+        traceback.print_exc()
         return _json_response(
             500,
             {
                 "error": "Unhandled exception",
-                "detail": str(e),
+                "detail": traceback.format_exc(),
                 "type": type(e).__name__,
             },
         )
