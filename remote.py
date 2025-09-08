@@ -4,6 +4,9 @@ from typing import Optional, cast
 
 import pygit2
 
+GITMODE_TREE = pygit2.GIT_FILEMODE_TREE  # type: ignore
+GITMODE_FILE = pygit2.GIT_FILEMODE_BLOB  # type: ignore
+
 
 class Remote:
     def __init__(
@@ -60,8 +63,8 @@ class Remote:
     def _tree_to_dict(self, tree: pygit2.Tree) -> dict[str, Optional[dict]]:
         out: dict[str, Optional[dict]] = {}
         for entry in tree:
-            if entry.filemode == pygit2.GIT_FILEMODE_TREE:
-                subtree = self.repo[entry.oid]
+            if entry.filemode == GITMODE_TREE:
+                subtree = self.repo[entry.id]
                 out[entry.name] = self._tree_to_dict(subtree)  # type: ignore
             else:
                 out[entry.name] = None  # type: ignore
@@ -78,9 +81,9 @@ class Remote:
                 e = current[name]  # type: ignore
             except KeyError:
                 raise KeyError(f"Directory not found: {'/'.join(parts)}")
-            if e.filemode != pygit2.GIT_FILEMODE_TREE:  # type: ignore
+            if e.filemode != GITMODE_TREE:
                 raise KeyError(f"Path component is not a directory: {name}")
-            current = self.repo[e.oid]  # type: ignore
+            current = self.repo[e.id]
         return current  # type: ignore
 
     def _write_tree_with_update(
@@ -102,7 +105,7 @@ class Remote:
                 else self.repo.TreeBuilder()
             )
             # Insert/replace filename -> blob
-            builder.insert(filename, leaf_blob_oid, pygit2.GIT_FILEMODE_BLOB)
+            builder.insert(filename, leaf_blob_oid, GITMODE_FILE)
             return builder.write()
 
         # Otherwise, handle the next directory component and recurse
@@ -112,11 +115,11 @@ class Remote:
         if base_tree is not None:
             entry = next((e for e in base_tree if e.name == dirname), None)
             if entry is not None:
-                if entry.filemode != pygit2.GIT_FILEMODE_TREE:
+                if entry.filemode != GITMODE_TREE:
                     # Existing non-directory at this path; overwrite with a new directory
                     sub_tree_obj = None
                 else:
-                    sub_tree_obj = self.repo[entry.oid]
+                    sub_tree_obj = self.repo[entry.id]
 
         # Recurse into (existing or new) subtree
         new_subtree_oid = self._write_tree_with_update(
@@ -127,7 +130,7 @@ class Remote:
         builder = (
             self.repo.TreeBuilder(base_tree) if base_tree else self.repo.TreeBuilder()
         )
-        builder.insert(dirname, new_subtree_oid, pygit2.GIT_FILEMODE_TREE)
+        builder.insert(dirname, new_subtree_oid, GITMODE_TREE)
         return builder.write()
 
     # -----------------------
@@ -161,10 +164,10 @@ class Remote:
         except KeyError:
             raise KeyError(f"File not found: {path}")
 
-        if entry.filemode == pygit2.GIT_FILEMODE_TREE:  # type: ignore
+        if entry.filemode == GITMODE_TREE:  # type: ignore
             raise KeyError(f"Path is a directory: {path}")
 
-        blob = self.repo[entry.oid]  # type: ignore
+        blob = self.repo[entry.id]
         return blob.data.decode("utf-8", errors="replace")  # type: ignore
 
     def update_file_content(
@@ -195,7 +198,7 @@ class Remote:
         sig = pygit2.Signature(author_name, author_email)
         commit_msg = message or f"Update {path}"
         new_commit_oid = self.repo.create_commit(
-            self.ref, sig, sig, commit_msg, new_tree_oid, [commit.oid]
+            self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
         )
 
         # Push the updated ref to the remote
@@ -205,11 +208,151 @@ class Remote:
 
         return str(new_commit_oid)
 
+    # -----------------------
+    # New: create & delete
+    # -----------------------
+
+    def create_file(
+        self,
+        path: str,
+        content: str,
+        author_name: str = "Stateless Bot",
+        author_email: str = "noreply@example.com",
+        message: Optional[str] = None,
+        push: bool = True,
+        fail_if_exists: bool = True,
+    ) -> str:
+        """
+        Create a new file at `path` with `content`. Creates intermediate directories.
+        If `fail_if_exists` and the file already exists, raises KeyError.
+        Returns the new commit SHA.
+        """
+        commit = self._get_commit()
+        base_tree = commit.tree
+
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            raise KeyError("Empty path")
+
+        # Existence check
+        try:
+            parent = (
+                base_tree
+                if len(parts) == 1
+                else self._walk_to_tree(base_tree, parts[:-1])
+            )
+            if parts[-1] in {e.name for e in parent}:
+                if fail_if_exists:
+                    raise KeyError(f"File already exists: {path}")
+        except KeyError:
+            # parent directory may not exist; we'll create it below
+            pass
+
+        blob_oid = self.repo.create_blob(content.encode("utf-8"))
+        new_tree_oid = self._write_tree_with_update(base_tree, parts, blob_oid)
+
+        sig = pygit2.Signature(author_name, author_email)
+        commit_msg = message or f"Create {path}"
+        new_commit_oid = self.repo.create_commit(
+            self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
+        )
+
+        if push:
+            callbacks = pygit2.RemoteCallbacks()
+            self.remote.push([self.ref], callbacks=callbacks)
+
+        return str(new_commit_oid)
+
+    def delete_file(
+        self,
+        path: str,
+        author_name: str = "Stateless Bot",
+        author_email: str = "noreply@example.com",
+        message: Optional[str] = None,
+        push: bool = True,
+    ) -> str:
+        """
+        Delete the file at `path`. Raises KeyError if not found or if path is a directory.
+        Returns the new commit SHA.
+        """
+        commit = self._get_commit()
+        base_tree = commit.tree
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            raise KeyError("Empty path")
+
+        new_tree_oid_or_none = self._write_tree_with_delete(base_tree, parts)
+        if new_tree_oid_or_none is None:
+            # Repository would have an empty root tree; create an empty tree object
+            builder = self.repo.TreeBuilder()
+            new_tree_oid = builder.write()
+        else:
+            new_tree_oid = new_tree_oid_or_none
+
+        sig = pygit2.Signature(author_name, author_email)
+        commit_msg = message or f"Delete {path}"
+        new_commit_oid = self.repo.create_commit(
+            self.ref, sig, sig, commit_msg, new_tree_oid, [commit.id]
+        )
+
+        if push:
+            callbacks = pygit2.RemoteCallbacks()
+            self.remote.push([self.ref], callbacks=callbacks)
+
+        return str(new_commit_oid)
+
+    # -----------------------
+    # New: internal helper for delete
+    # -----------------------
+    def _write_tree_with_delete(
+        self,
+        base_tree: Optional[pygit2.Tree],
+        path_parts: list[str],
+    ) -> Optional[pygit2.Oid]:
+        """
+        Return a new tree OID equal to base_tree but with the file at /path_parts removed.
+        Returns None if the resulting tree is empty (so caller can prune the parent).
+        Raises KeyError if the path doesn't exist or a component isn't a directory.
+        """
+        if base_tree is None:
+            raise KeyError("Path not found")
+
+        name = path_parts[0]
+        try:
+            entry = base_tree[name]
+        except KeyError:
+            raise KeyError(f"Path not found: {'/'.join(path_parts)}")
+
+        builder = self.repo.TreeBuilder(base_tree)
+
+        if len(path_parts) == 1:
+            # Leaf
+            if entry.filemode == GITMODE_TREE:
+                raise KeyError(f"Path is a directory: {'/'.join(path_parts)}")
+            builder.remove(name)
+            new_oid = builder.write()
+            return None if len(self.repo[new_oid]) == 0 else new_oid  # type: ignore
+
+        # Recurse into subtree
+        if entry.filemode != GITMODE_TREE:
+            raise KeyError(f"Path component is not a directory: {name}")
+        new_subtree_oid = self._write_tree_with_delete(
+            self.repo[entry.id], path_parts[1:]  # type: ignore
+        )
+        if new_subtree_oid is None:
+            # Child became empty; remove it
+            builder.remove(name)
+        else:
+            builder.insert(name, new_subtree_oid, GITMODE_TREE)
+
+        new_oid = builder.write()
+        return None if len(self.repo[new_oid]) == 0 else new_oid  # type: ignore
+
 
 if __name__ == "__main__":
     # DEMO (read-only unless you keep `push=True` and have permission):
     uri = "https://github.com/libgit2/pygit2.git"
-    r = Remote(uri)  # , ref="refs/heads/master")
+    r = Remote(uri, ref="refs/heads/master")
 
     # 1) list files (nested dict)
     files = r.get_files()
