@@ -165,3 +165,34 @@ export const DeleteFileModal: React.FC<{
     </Modal>
   );
 };
+
+export const AuthModal: React.FC<{
+  onSubmit: (token: string) => void;
+  onClose: () => void;
+}> = ({ onSubmit, onClose }) => {
+  const [token, setToken] = React.useState("");
+
+  return (
+    <Modal title="Authentication" onClose={onClose}>
+      <div className="row">
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="Token"
+        />
+      </div>
+      <div className="actions">
+        <button className="button" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className="button primary"
+          onClick={() => onSubmit(token.trim())}
+        >
+          Save
+        </button>
+      </div>
+    </Modal>
+  );
+};

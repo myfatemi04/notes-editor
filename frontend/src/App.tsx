@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Editor } from "./components/Editor";
 import { FileTreeView } from "./components/FileTree";
 import {
+  AuthModal,
   CreateFileModal,
   DeleteFileModal,
   RenameFileModal,
 } from "./components/Modals";
-import { api } from "./lib/api";
+import { api, setAccessToken } from "./lib/api";
 import { FileTree } from "./lib/types";
 
 export default function App() {
@@ -124,6 +125,9 @@ export default function App() {
             disabled={!currentPath}
           >
             Delete
+          </button>
+          <button className="button" onClick={() => setShowAuth(true)}>
+            Authenticate
           </button>
           <button
             className="button primary"
@@ -244,6 +248,16 @@ export default function App() {
             } catch (e: any) {
               setError(e.message || String(e));
             }
+          }}
+        />
+      )}
+
+      {showAuth && (
+        <AuthModal
+          onClose={() => setShowAuth(false)}
+          onSubmit={(token) => {
+            setAccessToken(token);
+            setShowAuth(false);
           }}
         />
       )}

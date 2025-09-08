@@ -10,8 +10,12 @@ import {
 
 const BASE = import.meta.env.VITE_API_BASE_URL as string;
 
-function getAccessToken(): string {
+export function getAccessToken(): string {
   return localStorage.getItem("access_token") || "";
+}
+
+export function setAccessToken(token: string) {
+  localStorage.setItem("access_token", token);
 }
 
 async function http<T>(input: RequestInfo, init?: RequestInit): Promise<T> {

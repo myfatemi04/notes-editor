@@ -211,6 +211,7 @@ body,
   text-align: right;
 }
 .modal input[type="text"],
+.modal input[type="password"],
 .modal textarea {
   width: 100%;
   border: 2px solid var(--border);
