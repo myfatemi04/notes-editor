@@ -27,6 +27,11 @@ turndownService.addRule("switchFontStyle", {
   },
 });
 
+turndownService.addRule("stripImages", {
+  filter: (node) => node.nodeName === "IMG",
+  replacement: () => "",
+});
+
 // Strangely, sometimes <b> is used for non-bold text when pasting from Google Docs.
 turndownService.addRule("ignoreNormalWeightBold", {
   filter: (node) => node.nodeName === "B" || node.nodeName === "STRONG",
@@ -67,7 +72,7 @@ function insertAtCursor(textarea, text) {
   textarea.dispatchEvent(new InputEvent("input", { bubbles: true }));
 }
 
-function normalizeHtml(html) {
+function normalizeHtml(html: string) {
   // Minimal sanitation/normalization for Google Docs paste
   // - Remove style/class attributes
   // - Drop comments & meta cruft

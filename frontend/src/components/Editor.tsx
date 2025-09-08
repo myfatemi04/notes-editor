@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import { getEventListener } from "./pasteAsHTML";
 
 type EditorProps = {
@@ -42,6 +43,8 @@ export const Editor: React.FC<EditorProps> = ({
             height: "100%",
             width: "100%",
             border: 0,
+            // Switch to something easier on the eyes
+            fontFamily: "sans-serif",
           }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -61,7 +64,10 @@ export const Editor: React.FC<EditorProps> = ({
         style={{ flex: 1, borderLeft: 0, overflowY: "auto" }}
         className="textarea"
       >
-        <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+        <Markdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
           {value}
         </Markdown>
       </div>
