@@ -9,6 +9,7 @@ import {
 } from "./components/Modals";
 import { api, setAccessToken } from "./lib/api";
 import { FileTree } from "./lib/types";
+import BlockEditor from "./components/BlockEditor";
 
 export default function App() {
   const [tree, setTree] = useState<FileTree | null>(null);
@@ -101,7 +102,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="header">
-        <div className="brand">Remote File Viewer</div>
+        <div className="brand">Notes</div>
         <div className="toolbar">
           <button
             className="button"
@@ -168,7 +169,7 @@ export default function App() {
           )}
         </div>
 
-        <Editor
+        <BlockEditor
           value={content}
           onChange={setContent}
           disabled={!currentPath || loading}
