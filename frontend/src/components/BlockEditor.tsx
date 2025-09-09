@@ -18,8 +18,8 @@ const processor = createProcessor({
 function Block({
   editing,
   setEditingOffset,
-  previousBlockOffset,
-  nextBlockOffset,
+  start,
+  end,
   tree,
   file,
   allowedElements,
@@ -30,16 +30,10 @@ function Block({
   unwrapDisallowed,
   urlTransform,
   onChange,
+  undo,
 }) {
   let preview: ReactElement | null = null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  console.log(
-    "my selectionStart:",
-    textareaRef.current?.selectionStart,
-    "my length:",
-    textareaRef.current?.value.length
-  );
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -54,25 +48,27 @@ function Block({
     const keyListener = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp" && textarea.selectionStart === 0) {
         e.preventDefault();
-        console.log("Going to previous block at", previousBlockOffset);
-        setEditingOffset(previousBlockOffset);
+        setEditingOffset(start - 1);
       } else if (
         e.key === "ArrowDown" &&
         textarea.selectionStart === textarea.value.length
       ) {
         e.preventDefault();
-        console.log("Going to next block at", nextBlockOffset);
-        setEditingOffset(nextBlockOffset);
+        setEditingOffset(end);
       } else {
-        console.log("Setting offset to", {
-          offset:
-            tree.children[0].position.start.offset + textarea.selectionStart,
-          startOffset: tree.children[0].position.start.offset,
+        setEditingOffset(start + textarea.selectionStart);
+
+        console.log("setting editing offset to", {
+          start,
           selectionStart: textarea.selectionStart,
+          offset: start + textarea.selectionStart,
+          end,
         });
-        setEditingOffset(
-          tree.children[0].position.start.offset + textarea.selectionStart
-        );
+      }
+
+      if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        undo();
       }
     };
 
@@ -80,7 +76,7 @@ function Block({
     return () => {
       textarea.removeEventListener("keydown", keyListener);
     };
-  }, [editing]);
+  }, [editing, start, end, undo]);
 
   if (!editing) {
     const transformed = processor.runSync(tree, file);
@@ -95,16 +91,34 @@ function Block({
     });
   }
 
+  const content = file.value.slice(
+    tree.children[0].position.start.offset,
+    tree.children[0].position.end.offset
+  );
+  const lines = content.split("\n").length;
+
+  if (textareaRef.current) {
+    const textarea = textareaRef.current;
+    if (textarea.scrollHeight < 14) {
+      textarea.style.height = "18px";
+    }
+    setTimeout(() => {
+      textarea.style.height = textarea.scrollHeight + "px";
+    }, 0);
+  }
+
   return (
-    <div style={{ borderTop: "1px solid red" }}>
+    <div
+      style={{ borderTop: "1px solid red", padding: "12px" }}
+      onClick={() => setEditingOffset(start)}
+    >
       {preview}
       <textarea
+        className="textarea-for-block"
+        rows={lines + 1}
         style={{ display: editing ? "block" : "none" }}
         onChange={onChange}
-        value={file.value.slice(
-          tree.children[0].position.start.offset,
-          tree.children[0].position.end.offset
-        )}
+        value={content}
         ref={textareaRef}
       ></textarea>
     </div>
@@ -129,40 +143,72 @@ export default function BlockEditor({
   // Parse the content into top-level content, which we will use for blocks.
   const file = createFile({ children: value });
   const tree = processor.parse(file);
-  const [editingOffset, setEditingOffset] = useState(0);
+  let [editingOffset, setEditingOffset] = useState(0);
 
   // Determine which block is being edited.
   const children = tree.children.filter((child) => !!child.position);
 
+  const previousValuesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (value == previousValuesRef.current.at(-1)) {
+      return;
+    }
+
+    if (previousValuesRef.current.length > 5) {
+      previousValuesRef.current.shift();
+    }
+    previousValuesRef.current.push(value);
+  }, [value]);
+
+  const undo = () => {
+    if (previousValuesRef.current.length < 2) {
+      return;
+    }
+    previousValuesRef.current.pop();
+    const previous = previousValuesRef.current.at(-1);
+    if (previous !== undefined) {
+      onChange(previous);
+    }
+  };
+
+  if (editingOffset > value.length) {
+    editingOffset = value.length;
+    setEditingOffset(value.length);
+  } else if (editingOffset < 0) {
+    editingOffset = 0;
+    setEditingOffset(0);
+  }
+
   return (
-    <>
+    <div style={{ overflowY: "auto" }}>
       {children.map((child, i) => {
+        // Edit spans so child ends at next child's start.
         const start = child.position!.start.offset!;
-        const end = child.position!.end.offset!;
-        const editing = start <= editingOffset && editingOffset <= end;
+        const end =
+          i < children.length - 1
+            ? children[i + 1].position!.start.offset!
+            : value.length + 1;
+
+        let editing = start <= editingOffset && editingOffset < end;
 
         const onBlockChange: ChangeEventHandler<HTMLTextAreaElement> = (e) => {
           const before = value.slice(0, start);
           const after = value.slice(end);
+          console.log("setting value to", JSON.stringify(e.target.value));
           onChange(before + e.target.value + after);
         };
 
-        console.log({ editingOffset, start, end, editing });
+        // console.log({ editingOffset, start, end, editing });
 
         return (
           <Block
             key={i}
+            undo={undo}
             editing={editing}
             setEditingOffset={setEditingOffset}
-            // There may be whitespace filtered out between blocks.
-            previousBlockOffset={
-              i > 0 ? children[i - 1].position!.end.offset! - 1 : 0
-            }
-            nextBlockOffset={
-              i < children.length - 1
-                ? children[i + 1].position!.start.offset
-                : value.length - 1
-            }
+            start={start}
+            end={end}
             tree={{ children: [child], type: "root" }}
             file={file}
             allowedElements={allowedElements}
@@ -176,6 +222,6 @@ export default function BlockEditor({
           />
         );
       })}
-    </>
+    </div>
   );
 }
