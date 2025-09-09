@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -17,26 +17,42 @@ export const Editor: React.FC<EditorProps> = ({
   disabled,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [previewLayout, setPreviewLayout] = useState<"side-by-side" | "bottom">(
+    "side-by-side"
+  );
 
   useEffect(() => {
-    const listener = getEventListener();
-    document.addEventListener("paste", listener);
+    const pasteListener = getEventListener();
+    const screenResizeListener = () => {
+      if (window.innerWidth < window.screen.width * 0.6) {
+        setPreviewLayout("bottom");
+      } else {
+        setPreviewLayout("side-by-side");
+      }
+    };
+
+    document.addEventListener("paste", pasteListener);
+    window.addEventListener("resize", screenResizeListener);
     return () => {
-      document.removeEventListener("paste", listener);
+      document.removeEventListener("paste", pasteListener);
+      window.removeEventListener("resize", screenResizeListener);
     };
   }, []);
 
   return (
     <div
       className="editor-wrap"
-      style={{ display: "flex", flexDirection: "row" }}
+      style={{
+        display: "flex",
+        flexDirection: previewLayout === "side-by-side" ? "row" : "column",
+      }}
     >
       {/* Textarea */}
       <div style={{ flex: 1 }} className="textarea">
         <textarea
           ref={textareaRef}
           style={{
-            paddingBottom: "50vh",
+            paddingBottom: previewLayout === "side-by-side" ? "50vh" : "12px",
             paddingLeft: "12px",
             paddingTop: "12px",
             paddingRight: "12px",
@@ -61,7 +77,8 @@ export const Editor: React.FC<EditorProps> = ({
       <div
         style={{
           flex: 1,
-          borderLeft: 0,
+          borderLeft: previewLayout === "side-by-side" ? 0 : undefined,
+          borderTop: previewLayout === "bottom" ? 0 : undefined,
           overflowY: "auto",
           // Switch to something easier on the eyes
           fontFamily: "sans-serif",
