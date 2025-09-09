@@ -15,6 +15,7 @@ export default function App() {
   const [tree, setTree] = useState<FileTree | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
   const [content, setContent] = useState<string>("");
+
   const [savedContent, setSavedContent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);

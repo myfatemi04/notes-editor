@@ -2,6 +2,7 @@ import {
   ChangeEventHandler,
   ReactElement,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -17,7 +18,10 @@ const processor = createProcessor({
 
 function Block({
   editing,
+  defaultEditingOffset,
   setEditingOffset,
+  onBeginningBackspace,
+  onEndEnter,
   start,
   end,
   tree,
@@ -32,7 +36,6 @@ function Block({
   onChange,
   undo,
 }) {
-  let preview: ReactElement | null = null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -46,24 +49,37 @@ function Block({
     }
 
     const keyListener = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp" && textarea.selectionStart === 0) {
+      const isBackspaceAtBeginning =
+        e.key === "Backspace" &&
+        textarea.selectionStart === 0 &&
+        textarea.selectionEnd === 0;
+
+      if (isBackspaceAtBeginning) {
         e.preventDefault();
-        setEditingOffset(start - 1);
-      } else if (
-        e.key === "ArrowDown" &&
+        onBeginningBackspace();
+      }
+
+      if (
+        e.key === "Enter" &&
         textarea.selectionStart === textarea.value.length
       ) {
         e.preventDefault();
-        setEditingOffset(end);
-      } else {
-        setEditingOffset(start + textarea.selectionStart);
+        onEndEnter();
+      }
 
-        console.log("setting editing offset to", {
-          start,
-          selectionStart: textarea.selectionStart,
-          offset: start + textarea.selectionStart,
-          end,
-        });
+      if (
+        (["ArrowUp", "ArrowLeft"].includes(e.key) &&
+          textarea.selectionStart === 0) ||
+        isBackspaceAtBeginning
+      ) {
+        e.preventDefault();
+        setEditingOffset(start - 2);
+      } else if (
+        ["ArrowRight", "ArrowDown"].includes(e.key) &&
+        textarea.selectionStart === textarea.value.length
+      ) {
+        e.preventDefault();
+        setEditingOffset(end + 1);
       }
 
       if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
@@ -76,11 +92,22 @@ function Block({
     return () => {
       textarea.removeEventListener("keydown", keyListener);
     };
-  }, [editing, start, end, undo]);
+  }, [editing, start, end, undo, onBeginningBackspace]);
 
-  if (!editing) {
-    const transformed = processor.runSync(tree, file);
-    preview = post(transformed, {
+  const preview = useMemo(
+    () =>
+      post(processor.runSync(tree, file), {
+        allowedElements,
+        allowElement,
+        components,
+        disallowedElements,
+        skipHtml,
+        unwrapDisallowed,
+        urlTransform,
+      }),
+    [
+      tree,
+      file,
       allowedElements,
       allowElement,
       components,
@@ -88,39 +115,43 @@ function Block({
       skipHtml,
       unwrapDisallowed,
       urlTransform,
-    });
-  }
-
-  const content = file.value.slice(
-    tree.children[0].position.start.offset,
-    tree.children[0].position.end.offset
+    ]
   );
-  const lines = content.split("\n").length;
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
-    if (textarea.scrollHeight < 14) {
-      textarea.style.height = "18px";
-    }
-    setTimeout(() => {
-      textarea.style.height = textarea.scrollHeight + "px";
-    }, 0);
+    textarea.style.height = "auto";
   }
+
+  useEffect(() => {
+    // This should only apply in the beginning.
+    if (editing && textareaRef.current) {
+      const defaultCursorPosition = defaultEditingOffset - start;
+      textareaRef.current.selectionStart = defaultCursorPosition + 1;
+      textareaRef.current.selectionEnd = defaultCursorPosition + 1;
+    }
+  }, [editing]);
 
   return (
     <div
-      style={{ borderTop: "1px solid red", padding: "12px" }}
+      style={{
+        borderTop: "1px solid red",
+        padding: "12px",
+        display: "flex",
+        alignItems: "center",
+      }}
       onClick={() => setEditingOffset(start)}
     >
-      {preview}
-      <textarea
-        className="textarea-for-block"
-        rows={lines + 1}
-        style={{ display: editing ? "block" : "none" }}
-        onChange={onChange}
-        value={content}
-        ref={textareaRef}
-      ></textarea>
+      <div style={{ flex: 1, display: editing ? "block" : "none" }}>
+        <textarea
+          className="textarea-for-block"
+          onChange={onChange}
+          // All blocks are normalized to have two newlines at the end.
+          value={file.value.slice(start, end - 2)}
+          ref={textareaRef}
+        ></textarea>
+      </div>
+      <div style={{ flex: 1, marginLeft: "12px" }}>{preview}</div>
     </div>
   );
 }
@@ -141,12 +172,22 @@ export default function BlockEditor({
   disabled = false,
 }) {
   // Parse the content into top-level content, which we will use for blocks.
-  const file = createFile({ children: value });
-  const tree = processor.parse(file);
+  const file = useMemo(() => createFile({ children: value }), [value]);
+  const tree = useMemo(() => processor.parse(file), [file]);
   let [editingOffset, setEditingOffset] = useState(0);
 
-  // Determine which block is being edited.
   const children = tree.children.filter((child) => !!child.position);
+
+  // || [
+  //   {
+  //     type: "paragraph",
+  //     children: [],
+  //     position: {
+  //       start: { column: 0, line: 0, offset: 0 },
+  //       end: { column: 0, line: 0, offset: 1 },
+  //     },
+  //   },
+  // ];
 
   const previousValuesRef = useRef<string[]>([]);
 
@@ -180,6 +221,74 @@ export default function BlockEditor({
     setEditingOffset(0);
   }
 
+  // console.log({
+  //   spans: children.map((c) => ({
+  //     start: c.position?.start.offset,
+  //     end: c.position?.end.offset,
+  //   })),
+  //   editingOffset,
+  //   valueLength: value.length,
+  // });
+
+  // Normalize so each block ends with a newline (a pad character).
+  useEffect(() => {
+    let text = "";
+    let newCursorPosition = editingOffset;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const start = child.position!.start.offset!;
+      const end =
+        i < children.length - 1
+          ? children[i + 1].position!.start.offset!
+          : value.length + 1;
+      let blockValue = value.slice(start, end);
+
+      // Count number of newlines at end
+      let newlineCount = 0;
+      for (let j = blockValue.length - 1; j >= 0; j--) {
+        if (blockValue[j] === "\n") {
+          newlineCount += 1;
+        } else {
+          break;
+        }
+      }
+
+      text += blockValue;
+
+      while (newlineCount < 2) {
+        if (newCursorPosition > text.length + 1) {
+          console.log("adjusting cursor position up");
+          newCursorPosition += 1;
+        }
+        console.log("adding newline to block");
+        text += "\n";
+        newlineCount += 1;
+      }
+      while (newlineCount > 2) {
+        if (newCursorPosition >= text.length - 1) {
+          console.log("adjusting cursor position down");
+          newCursorPosition -= 1;
+        }
+        console.log("removing newline from block");
+        text = text.slice(0, -1);
+        newlineCount -= 1;
+      }
+    }
+    const newValue = text || ".";
+    if (newValue !== value) {
+      // console.log(
+      //   "normalizing value",
+      //   JSON.stringify(value),
+      //   "to",
+      //   JSON.stringify(newValue)
+      // );
+      onChange(newValue);
+      setTimeout(() => {
+        setEditingOffset(newCursorPosition);
+      }, 0);
+    }
+  }, [value, editingOffset]);
+
   return (
     <div style={{ overflowY: "auto" }}>
       {children.map((child, i) => {
@@ -192,21 +301,84 @@ export default function BlockEditor({
 
         let editing = start <= editingOffset && editingOffset < end;
 
+        if (editing) {
+          console.log("editing block", i, "at offset", editingOffset, {
+            start,
+            end,
+          });
+        }
+
         const onBlockChange: ChangeEventHandler<HTMLTextAreaElement> = (e) => {
           const before = value.slice(0, start);
           const after = value.slice(end);
-          console.log("setting value to", JSON.stringify(e.target.value));
-          onChange(before + e.target.value + after);
+          let textareaValue = e.target.value;
+          if (e.target.value.startsWith(".") && e.target.value.length > 1) {
+            textareaValue = e.target.value.slice(1);
+          } else if (
+            // These are for equations, and if partially complete then they mess up the editor.
+            e.target.value.trim() === "$$" ||
+            e.target.value.trim() === "$$$$"
+          ) {
+            textareaValue = "$$ $$";
+            setEditingOffset(start + 1);
+          }
+          // The two newlines were truncated from the textarea.
+          const newBlockValue = textareaValue + "\n\n";
+          const newValue = before + newBlockValue + after;
+          // console.log(
+          //   "setting value to",
+          //   JSON.stringify(newBlockValue),
+          //   "from",
+          //   JSON.stringify(blockValue),
+          //   "whole value",
+          //   JSON.stringify(newValue)
+          // );
+          onChange(newValue);
         };
 
-        // console.log({ editingOffset, start, end, editing });
+        const onBeginningBackspace = () => {
+          if (i === 0) {
+            return;
+          }
+          const newValue = value.slice(0, start - 1) + value.slice(start);
+          onChange(newValue);
+          setEditingOffset(start - 1);
+          console.log(
+            "setting editing offset to",
+            start - 1,
+            "value before is",
+            JSON.stringify(newValue.slice(0, start - 1)),
+            "value after is",
+            JSON.stringify(newValue.slice(start - 1))
+          );
+        };
+
+        const onEndEnter = () => {
+          const newValue =
+            value.slice(0, end) + "\n\n.\n\n" + value.slice(end, value.length);
+          onChange(newValue);
+          setEditingOffset(end + 2);
+          console.log(
+            "adding new block after",
+            i,
+            "setting editing offset to",
+            end + 2,
+            "value before is",
+            JSON.stringify(newValue.slice(0, end + 2)),
+            "value after is",
+            JSON.stringify(newValue.slice(end + 2))
+          );
+        };
 
         return (
           <Block
             key={i}
             undo={undo}
             editing={editing}
+            defaultEditingOffset={editingOffset}
             setEditingOffset={setEditingOffset}
+            onBeginningBackspace={onBeginningBackspace}
+            onEndEnter={onEndEnter}
             start={start}
             end={end}
             tree={{ children: [child], type: "root" }}
