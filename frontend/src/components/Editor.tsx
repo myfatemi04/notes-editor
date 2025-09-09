@@ -17,6 +17,7 @@ export const Editor: React.FC<EditorProps> = ({
   disabled,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [previewLayout, setPreviewLayout] = useState<"side-by-side" | "bottom">(
     "side-by-side"
   );
@@ -36,6 +37,27 @@ export const Editor: React.FC<EditorProps> = ({
     return () => {
       document.removeEventListener("paste", pasteListener);
       window.removeEventListener("resize", screenResizeListener);
+    };
+  }, []);
+
+  // Scroll listener: make preview stick to bottom if textarea is at bottom
+  useEffect(() => {
+    const el = textareaRef.current;
+    const preview = previewRef.current;
+    if (!el || !preview) return;
+
+    const scrollListener = () => {
+      if (el.scrollHeight - el.scrollTop < el.clientHeight + 20) {
+        preview.scrollTop = preview.scrollHeight;
+        return;
+      }
+    };
+
+    el.addEventListener("scroll", scrollListener);
+    el.addEventListener("input", scrollListener);
+    return () => {
+      el.removeEventListener("scroll", scrollListener);
+      el.removeEventListener("input", scrollListener);
     };
   }, []);
 
@@ -84,6 +106,7 @@ export const Editor: React.FC<EditorProps> = ({
           fontFamily: "sans-serif",
         }}
         className="textarea"
+        ref={previewRef}
       >
         <Markdown
           remarkPlugins={[remarkGfm, remarkMath]}
