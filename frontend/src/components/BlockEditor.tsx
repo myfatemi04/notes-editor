@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -9,6 +9,8 @@ const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
   rehypePlugins: [rehypeKatex],
 });
+
+const EMPTY_SPECIAL_STRING = "(empty)";
 
 function logEvent(tag: string, metadata: Record<string, any> = {}) {
   console.log(`event: ${tag}`, metadata);
@@ -29,6 +31,21 @@ function Block({
   split,
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const blockType = content.startsWith("```")
+    ? "code"
+    : content.startsWith("$$")
+    ? "math"
+    : "text";
+
+  const textareaContent =
+    content === EMPTY_SPECIAL_STRING
+      ? ""
+      : blockType === "code"
+      ? content.slice(content.indexOf("\n") + 1, content.lastIndexOf("```"))
+      : blockType === "math"
+      ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
+        content.slice("$$\n".length, content.length - "\n$$".length)
+      : content;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -60,13 +77,17 @@ function Block({
         e.preventDefault();
         editPrevious();
         logEvent("edit-previous-arrowup", { cursor, firstLineEnd });
-      } else if (
+        return;
+      }
+
+      if (
         e.key === "ArrowDown" &&
         (lastLineStart === 0 || cursor > lastLineStart)
       ) {
         e.preventDefault();
         editNext();
         logEvent("edit-next-arrowdown", { cursor, lastLineStart });
+        return;
       }
 
       // Pressing left/right at beginning/end of text should move to previous/next block
@@ -74,44 +95,99 @@ function Block({
         e.preventDefault();
         editPrevious();
         logEvent("edit-previous-arrowleft", { cursor });
+        return;
       }
 
       if (e.key === "ArrowRight" && cursor === textarea.value.length) {
         e.preventDefault();
         editNext();
         logEvent("edit-next-arrowright", { cursor });
+        return;
       }
 
       // Pressing Enter in a block should create a new block below, with the content of the current block split at the cursor.
       if (e.key === "Enter") {
+        // Check if a math or code block, in which case we shouldn't split.
+        if (content.startsWith("$$")) {
+          return;
+        }
+        if (content.startsWith("```")) {
+          return;
+        }
+
         e.preventDefault();
         split(cursor);
         logEvent("split", { cursor });
+        return;
       }
 
       // Pressing Backspace at the beginning of a block should merge with the previous block.
       if (e.key === "Backspace" && cursor === 0) {
+        // Don't merge with previous block if code or math block.
+        if (blockType !== "text") {
+          // Remove block if empty.
+          if (textareaContent === "") {
+            setContent("");
+            logEvent("remove-empty-non-text-block");
+          }
+          return;
+        }
+
         e.preventDefault();
         mergePrevious();
         logEvent("merge-previous");
+        return;
       }
-    };
-
-    const changeListener = () => {
-      setContent(textarea.value);
     };
 
     const pasteListener = getEventListener();
     textarea.addEventListener("paste", pasteListener);
     textarea.addEventListener("keydown", keyListener);
-    textarea.addEventListener("change", changeListener);
 
     return () => {
       textarea.removeEventListener("keydown", keyListener);
       textarea.removeEventListener("paste", pasteListener);
-      textarea.removeEventListener("change", changeListener);
     };
-  }, [editing, undo]);
+  }, [editing, undo, blockType]);
+
+  const onChange = useCallback(() => {
+    const textarea = textareaRef.current!;
+
+    // Create math blocks.
+    if (
+      (textarea.value.endsWith("$$") && !textarea.value.startsWith("$$")) ||
+      textarea.value === "$$"
+    ) {
+      logEvent("create-math-block");
+      setContent(textarea.value + "\n\n$$\n\n");
+      return;
+    }
+
+    // Create code blocks.
+    if (
+      (textarea.value.endsWith("```") && !textarea.value.startsWith("```")) ||
+      textarea.value === "```"
+    ) {
+      logEvent("create-code-block");
+      setContent(textarea.value + "\n\n```\n\n");
+      return;
+    }
+
+    if (blockType === "code") {
+      const firstLine = content.slice(0, content.indexOf("\n"));
+      setContent(`${firstLine}\n${textarea.value}\n\`\`\``);
+      logEvent("edit-code-block");
+      return;
+    }
+    if (blockType === "math") {
+      setContent(`$$\n${textarea.value}\n$$`);
+      logEvent("edit-math-block");
+      return;
+    }
+
+    logEvent("edit-text-block");
+    setContent(textarea.value);
+  }, [blockType, content]);
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
@@ -129,26 +205,26 @@ function Block({
   return (
     <div
       style={{
-        borderTop: "1px solid red",
+        borderBottom: "1px solid red",
         padding: "12px",
         display: "flex",
         alignItems: "center",
+        minHeight: "10px",
       }}
       onClick={() => !editing && editMe()}
     >
       <div style={{ flex: 1, display: editing ? "block" : "none" }}>
+        {/* Mutually exclusive. */}
+        {blockType !== "text" && `(${blockType})`}
         <textarea
           className="textarea-for-block"
-          onChange={() => {
-            if (!textareaRef.current) return;
-            return setContent(textareaRef.current?.value);
-          }}
-          value={content}
+          value={textareaContent}
+          onChange={onChange}
           ref={textareaRef}
         />
       </div>
       <div style={{ flex: 1, marginLeft: "12px" }}>
-        {post({ type: "root", children: [ast] }, mdopts)}
+        {post(processor.runSync({ type: "root", children: [ast] }), mdopts)}
       </div>
     </div>
   );
@@ -187,7 +263,7 @@ function normalize(content, ast) {
       newlineCount -= 1;
     }
   }
-  return blockTexts.join("") || "(empty)\n\n";
+  return blockTexts.join("") || `${EMPTY_SPECIAL_STRING}\n\n`;
 }
 
 export default function BlockEditor({
@@ -204,13 +280,21 @@ export default function BlockEditor({
 }) {
   // Parse the content into top-level content, which we will use for blocks.
   const file = useMemo(() => createFile({ children: content }), [content]);
-  const tree = useMemo(
-    () => processor.runSync(processor.parse(file), file),
-    [file]
-  );
+  const tree = useMemo(() => processor.parse(file), [file]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const children = tree.children.filter((child) => !!child.position);
   const previousValuesRef = useRef<string[]>([]);
+
+  const normalized = useMemo(() => normalize(content, tree), [content, tree]);
+
+  if (content !== normalized) {
+    content = normalized;
+    // Must be done asynchronously so that parent component finishes rendering first.
+    setTimeout(() => {
+      logEvent("normalize", { normalized });
+      setContent(normalized);
+    }, 0);
+  }
 
   useEffect(() => {
     if (content == previousValuesRef.current.at(-1)) {
@@ -262,6 +346,10 @@ export default function BlockEditor({
           const afterThisBlock = content.slice(end);
           const newBlockContent = newBlockContentWithoutDelimiter + "\n\n";
           setContent(`${beforeThisBlock}${newBlockContent}${afterThisBlock}`);
+
+          if (newBlockContent.trim() === "" && i > 0) {
+            setEditingIndex(i - 1);
+          }
         };
 
         const mergePrevious = () => {
@@ -279,7 +367,8 @@ export default function BlockEditor({
           const previousChildContent =
             previousChildContentIncludingDelimiter.slice(0, -2);
           const previousChildContentUpdated =
-            previousChildContent + blockContent;
+            previousChildContent +
+            (blockContent !== EMPTY_SPECIAL_STRING ? blockContent : "");
 
           const beforePreviousBlock = content.slice(0, previousStart);
           const afterThisBlock = content.slice(end);
@@ -292,7 +381,9 @@ export default function BlockEditor({
           const before = blockContent.slice(0, at);
           const after = blockContent.slice(at);
           const beforeWithDelimiter = before + "\n\n";
-          const afterWithDelimiter = `${after.trim() ? after : "(empty)"}\n\n`;
+          const afterWithDelimiter = `${
+            after.trim() ? after : EMPTY_SPECIAL_STRING
+          }\n\n`;
 
           const beforeThisBlock = content.slice(0, start);
           const afterThisBlock = content.slice(end);
