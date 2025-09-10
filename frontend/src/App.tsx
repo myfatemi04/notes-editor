@@ -171,8 +171,8 @@ export default function App() {
         </div>
 
         <BlockEditor
-          value={content}
-          onChange={setContent}
+          content={content}
+          setContent={setContent}
           disabled={!currentPath || loading}
         />
       </main>

@@ -160,14 +160,11 @@ html {
 
 .textarea-for-block {
   width: 100%;
-  /* height: 100%; */
+  height: auto;
   resize: none;
   background: #fcfcfc;
-  /* border: 2px solid var(--border); */
-  field-sizing: content;
   font-family: inherit;
   font-size: 13px;
-  /* padding: 10px; */
   tab-size: 2;
   outline: none;
 }
