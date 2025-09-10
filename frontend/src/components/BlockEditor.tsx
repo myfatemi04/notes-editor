@@ -10,6 +10,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { createFile, createProcessor, post } from "./rmd-modified";
+import { getEventListener } from "./pasteAsHTML";
 
 const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
@@ -88,15 +89,18 @@ function Block({
       }
     };
 
+    const pasteListener = getEventListener();
+    textarea.addEventListener("paste", pasteListener);
     textarea.addEventListener("keydown", keyListener);
     return () => {
       textarea.removeEventListener("keydown", keyListener);
+      textarea.removeEventListener("paste", pasteListener);
     };
   }, [editing, start, end, undo, onBeginningBackspace]);
 
   const preview = useMemo(
     () =>
-      post(processor.runSync(tree, file), {
+      post(tree, {
         allowedElements,
         allowElement,
         components,
@@ -173,7 +177,11 @@ export default function BlockEditor({
 }) {
   // Parse the content into top-level content, which we will use for blocks.
   const file = useMemo(() => createFile({ children: value }), [value]);
-  const tree = useMemo(() => processor.parse(file), [file]);
+  // const tree = useMemo(() => processor.parse(file), [file]);
+  const tree = useMemo(
+    () => processor.runSync(processor.parse(file), file),
+    [file]
+  );
   let [editingOffset, setEditingOffset] = useState(0);
 
   const children = tree.children.filter((child) => !!child.position);
@@ -232,7 +240,8 @@ export default function BlockEditor({
 
   // Normalize so each block ends with a newline (a pad character).
   useEffect(() => {
-    let text = "";
+    let blockTexts: string[] = [];
+    let textLength = 0;
     let newCursorPosition = editingOffset;
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
@@ -253,28 +262,31 @@ export default function BlockEditor({
         }
       }
 
-      text += blockValue;
+      blockTexts.push(blockValue);
+      textLength += blockValue.length;
 
       while (newlineCount < 2) {
-        if (newCursorPosition > text.length + 1) {
+        if (newCursorPosition > textLength + 1) {
           console.log("adjusting cursor position up");
           newCursorPosition += 1;
         }
         console.log("adding newline to block");
-        text += "\n";
+        blockTexts[i] += "\n";
+        textLength += 1;
         newlineCount += 1;
       }
       while (newlineCount > 2) {
-        if (newCursorPosition >= text.length - 1) {
+        if (newCursorPosition >= textLength - 1) {
           console.log("adjusting cursor position down");
           newCursorPosition -= 1;
         }
         console.log("removing newline from block");
-        text = text.slice(0, -1);
+        blockTexts[i] = blockTexts[i].slice(0, -1);
+        textLength -= 1;
         newlineCount -= 1;
       }
     }
-    const newValue = text || ".";
+    const newValue = blockTexts.join("") || ".";
     if (newValue !== value) {
       // console.log(
       //   "normalizing value",
