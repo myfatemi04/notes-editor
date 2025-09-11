@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import Canvas, { CanvasHostContext } from "./Canvas";
 import { getEventListener } from "./pasteAsHTML";
 import { createFile, createProcessor, post } from "./rmd-modified";
-import Canvas, { CanvasHostContext } from "./Canvas";
 
 const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
@@ -381,7 +381,7 @@ function Block({
       textarea.removeEventListener("keydown", keyListener);
       textarea.removeEventListener("paste", pasteListener);
     };
-  }, [editing, undo, blockType]);
+  }, [editing, undo, blockType, setContent, setFromTextareaContent]);
 
   const onChange = useCallback(() => {
     const textarea = textareaRef.current!;
@@ -421,7 +421,7 @@ function Block({
     } else if (blockType === "code" || blockType === "math") {
       setFromTextareaContent(textarea.value);
     }
-  }, [blockType, content, setContent]);
+  }, [blockType, content, setContent, setFromTextareaContent]);
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
@@ -442,11 +442,14 @@ function Block({
     }
   }, [editing]);
 
-  const setCodeLang = useCallback((newLang: string) => {
-    const textarea = textareaRef.current!;
-    const newContent = `\`\`\`${newLang}\n${textarea.value}\`\`\``;
-    setContent(newContent);
-  }, []);
+  const setCodeLang = useCallback(
+    (newLang: string) => {
+      const textarea = textareaRef.current!;
+      const newContent = `\`\`\`${newLang}\n${textarea.value}\`\`\``;
+      setContent(newContent);
+    },
+    [setContent]
+  );
 
   const maxWidth = !editing ? "600px" : "1200px";
 
@@ -519,10 +522,7 @@ function Block({
             }}
           >
             {post(
-              processor.runSync(
-                { type: "root", children: [JSON.parse(JSON.stringify(ast))] },
-                file
-              ),
+              processor.runSync({ type: "root", children: [ast] }, file),
               mdopts
             )}
           </div>
@@ -592,8 +592,11 @@ export default function BlockEditor({
   disabled?: boolean;
 }) {
   // Parse the content into top-level content, which we will use for blocks.
-  const file = useMemo(() => createFile({ children: content }), [content]);
-  const tree = useMemo(() => processor.parse(file), [file]);
+  const [file, tree] = useMemo(() => {
+    const file = createFile({ children: content });
+    const tree = processor.parse(file);
+    return [file, tree];
+  }, [content]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const children = tree.children.filter((child) => !!child.position);
   const previousValuesRef = useRef<string[]>([]);
@@ -608,6 +611,9 @@ export default function BlockEditor({
       logEvent("normalize", { normalized });
       // alert("normalizing to " + normalized);
       setContent(normalized);
+
+      const file = createFile({ children: normalized });
+      const tree = processor.parse(file);
     }, 0);
   }
 

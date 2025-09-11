@@ -409,7 +409,7 @@ export default function Canvas() {
       canvas.removeEventListener("mouseup", onMouseUp);
       canvas.removeEventListener("mouseleave", onMouseUp);
     };
-  }, [colorPaletteIndex, b64]);
+  }, [colorPaletteIndex, b64, setB64]);
 
   const render = useCallback(
     (strokes: Stroke[]) => {
@@ -447,7 +447,7 @@ export default function Canvas() {
     setStrokes(newStrokes);
     render(newStrokes);
     serialize(newStrokes).then(setB64);
-  }, [strokes, render]);
+  }, [strokes, render, setB64]);
 
   return (
     <div
