@@ -13,6 +13,7 @@ const processor = createProcessor({
 
 const EMPTY_SPECIAL_STRING = "(empty)";
 const TAB_SIZE = 4;
+const CANVAS_URL_BASE = "data:image/minicanvas;base64,";
 
 function logEvent(tag: string, metadata: Record<string, any> = {}) {
   console.log(`event: ${tag}`, metadata);
@@ -38,6 +39,11 @@ function Block({
     ? "code"
     : content.startsWith("$$")
     ? "math"
+    : ast.type === "paragraph" &&
+      ast.children.length === 1 &&
+      ast.children[0].type === "image" &&
+      ast.children[0].url.startsWith(CANVAS_URL_BASE)
+    ? "canvas"
     : "text";
 
   console.log(ast);
@@ -53,27 +59,30 @@ function Block({
       : blockType === "math"
       ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
         content.slice("$$\n".length, content.length - "\n$$".length)
+      : blockType === "canvas"
+      ? ast.children[0].url.slice(CANVAS_URL_BASE.length)
       : content;
 
   const setFromTextareaContent = useCallback(
     (textareaContent: string) => {
       if (blockType === "code") {
         const firstLine = content.slice(0, content.indexOf("\n"));
-        const language = firstLine.slice("```".length).trim();
-
-        // Canvas can set b64 content to '' to remove itself.
-        if (language === "canvas" && textareaContent.length === 0) {
-          logEvent("remove-canvas-block");
-          setContent("");
-          return;
-        }
-
         const newContent = `${firstLine}\n${textareaContent.replace(
           /`/g,
           "\\`"
         )}\n\`\`\``;
         logEvent("edit-block-code", { textareaContent, newContent });
         setContent(newContent);
+        return;
+      }
+      if (blockType === "canvas") {
+        // Canvas can set b64 content to '' to remove itself.
+        if (textareaContent.length === 0) {
+          logEvent("remove-canvas-block");
+          setContent("");
+        } else {
+          setContent(`![@canvas](${CANVAS_URL_BASE + textareaContent})`);
+        }
         return;
       }
       if (blockType === "math") {
@@ -398,6 +407,20 @@ function Block({
         setContent(textarea.value + "\n\n```\n\n");
         return;
       }
+
+      // Create canvas blocks.
+      console.log({
+        endsWithCanvas: textarea.value.endsWith("/canvas"),
+        value: textarea.value,
+      });
+      if (textarea.value.endsWith("/canvas")) {
+        logEvent("create-canvas-block");
+        setContent(
+          textarea.value.slice(0, -"/canvas".length) +
+            `\n\n![@canvas](${CANVAS_URL_BASE})\n\n`
+        );
+        return;
+      }
     }
 
     setFromTextareaContent(textarea.value);
@@ -450,7 +473,7 @@ function Block({
       }}
       onClick={() => !editing && editMe()}
     >
-      {blockType === "code" && language === "canvas" ? (
+      {blockType === "canvas" ? (
         <CanvasHostContext.Provider
           value={{
             setB64: setFromTextareaContent,

@@ -487,7 +487,7 @@ export default function Canvas() {
                 width: "32px",
               }}
             >
-              {color.erase ? "Eraser" : ""}
+              {color.erase ? "X" : ""}
             </div>
           );
         })}
