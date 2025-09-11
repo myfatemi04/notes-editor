@@ -40,6 +40,8 @@ function Block({
     ? "math"
     : "text";
 
+  console.log(ast);
+
   const textareaContent =
     content === EMPTY_SPECIAL_STRING
       ? ""
@@ -57,6 +59,15 @@ function Block({
     (textareaContent: string) => {
       if (blockType === "code") {
         const firstLine = content.slice(0, content.indexOf("\n"));
+        const language = firstLine.slice("```".length).trim();
+
+        // Canvas can set b64 content to '' to remove itself.
+        if (language === "canvas" && textareaContent.length === 0) {
+          logEvent("remove-canvas-block");
+          setContent("");
+          return;
+        }
+
         const newContent = `${firstLine}\n${textareaContent.replace(
           /`/g,
           "\\`"
@@ -717,7 +728,11 @@ export default function BlockEditor({
           />
         );
       })}
-      <button onClick={() => setContent(content + "\n\n(empty)\n\n")}>
+      <button
+        onClick={() => setContent(content + "\n\n(empty)\n\n")}
+        className="button"
+        style={{ marginLeft: "12px", marginTop: "12px", border: 0 }}
+      >
         Add block
       </button>
       <div style={{ height: "100vh" }} onClick={() => setEditingIndex(null)} />

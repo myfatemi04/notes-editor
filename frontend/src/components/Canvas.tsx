@@ -491,6 +491,18 @@ export default function Canvas() {
             </div>
           );
         })}
+
+        <button
+          onClick={() => {
+            if (confirm("Are you sure you want to remove this block?")) {
+              setB64("");
+            }
+          }}
+          style={{ marginRight: 4 }}
+          className="button"
+        >
+          Remove canvas
+        </button>
       </div>
       <canvas
         ref={canvasRef}
