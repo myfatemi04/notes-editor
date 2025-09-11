@@ -11,6 +11,7 @@ const processor = createProcessor({
 });
 
 const EMPTY_SPECIAL_STRING = "(empty)";
+const TAB_SIZE = 4;
 
 function logEvent(tag: string, metadata: Record<string, any> = {}) {
   console.log(`event: ${tag}`, metadata);
@@ -46,6 +47,24 @@ function Block({
       ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
         content.slice("$$\n".length, content.length - "\n$$".length)
       : content;
+
+  const setFromTextareaContent = useCallback(
+    (textareaContent: string) => {
+      if (blockType === "code") {
+        const firstLine = content.slice(0, content.indexOf("\n"));
+        setContent(`${firstLine}\n${textareaContent}\n\`\`\``);
+        return;
+      }
+      if (blockType === "math") {
+        setContent(`$$\n${textareaContent}\n$$`);
+        return;
+      }
+      setContent(textareaContent || EMPTY_SPECIAL_STRING);
+
+      logEvent("edit-block", { value: textareaContent });
+    },
+    [blockType, setContent]
+  );
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -115,10 +134,16 @@ function Block({
       // Pressing Enter in a block should create a new block below, with the content of the current block split at the cursor.
       if (e.key === "Enter") {
         // Check if a math or code block, in which case we shouldn't split.
-        if (content.startsWith("$$")) {
-          return;
-        }
-        if (content.startsWith("```")) {
+        if (blockType !== "text") {
+          if (!e.shiftKey) {
+            return;
+          }
+
+          // If shift key was held, split from the end of the block.
+          e.preventDefault();
+
+          split(content.length);
+          logEvent("split-non-text-block", { cursor });
           return;
         }
 
@@ -231,12 +256,13 @@ function Block({
       }
 
       if (e.key === "Tab") {
-        // Allow tabbing in LaTeX or code blocks.
-        if (blockType !== "text") {
+        e.preventDefault();
+
+        // Allow tabbing in LaTeX or code blocks. If shift key is held, unindent will be done instead.
+        if (blockType !== "text" && !e.shiftKey) {
+          document.execCommand("insertText", false, " ".repeat(TAB_SIZE));
           return;
         }
-
-        e.preventDefault();
 
         // Check if on a line with a list item.
         const lineStart = textarea.value.lastIndexOf("\n", cursor - 1) + 1;
@@ -245,6 +271,34 @@ function Block({
           lineEnd === -1
             ? textarea.value.slice(lineStart)
             : textarea.value.slice(lineStart, lineEnd);
+
+        // Unindent logic.
+        if (e.shiftKey) {
+          let newLine = line;
+          let cursorAdjustment = 0;
+          for (let i = TAB_SIZE; i > 0; i--) {
+            if (line.startsWith(" ".repeat(i))) {
+              newLine = line.slice(i);
+              cursorAdjustment = -i;
+              break;
+            }
+          }
+
+          if (newLine !== line) {
+            const before = textarea.value.slice(0, lineStart);
+            const after = lineEnd === -1 ? "" : textarea.value.slice(lineEnd);
+            const newContent = before + newLine + after;
+            setFromTextareaContent(newContent);
+            logEvent("unindent-line", { cursor, before, newLine, after });
+            setTimeout(() => {
+              textarea.selectionStart = cursor + cursorAdjustment;
+              textarea.selectionEnd = cursor + cursorAdjustment;
+              textarea.focus();
+            }, 0);
+          }
+
+          return;
+        }
 
         if (
           line.trimStart().startsWith("- ") ||
@@ -255,48 +309,26 @@ function Block({
           const after = lineEnd === -1 ? "" : textarea.value.slice(lineEnd);
 
           let newLine: string;
-          let cursorAdjustment = 0;
-          if (e.shiftKey) {
-            // Decrease indentation.
-            if (line.startsWith("    ")) {
-              newLine = line.slice(4);
-              cursorAdjustment = -4;
-            } else if (line.startsWith("   ")) {
-              newLine = line.slice(3);
-              cursorAdjustment = -3;
-            } else if (line.startsWith("  ")) {
-              newLine = line.slice(2);
-              cursorAdjustment = -2;
-            } else if (line.startsWith(" ")) {
-              newLine = line.slice(1);
-              cursorAdjustment = -1;
-            } else {
-              // Can't decrease indentation anymore.
-              newLine = line;
-            }
+          if (line.trimStart().match(/^(\d+)\. /)) {
+            // Numbered list item; the number should reset to 1.
+            const indentation = " ".repeat(
+              line.length - line.trimStart().length + TAB_SIZE
+            );
+            const contentStart = line.indexOf(".") + 1;
+            newLine = `${indentation}1. ${line
+              .slice(contentStart)
+              .trimStart()}`;
           } else {
-            if (line.trimStart().match(/^(\d+)\. /)) {
-              // Numbered list item; the number should reset to 1.
-              const indentation = " ".repeat(
-                line.length - line.trimStart().length + 4
-              );
-              const contentStart = line.indexOf(".") + 1;
-              newLine = `${indentation}1. ${line
-                .slice(contentStart)
-                .trimStart()}`;
-            } else {
-              // Unordered list item.
-              newLine = "    " + line;
-            }
-            cursorAdjustment = 4;
+            // Unordered list item.
+            newLine = " ".repeat(TAB_SIZE) + line;
           }
           const newContent = before + newLine + after;
           setContent(newContent);
           logEvent("indent-list-item", { cursor, before, newLine, after });
 
           setTimeout(() => {
-            textarea.selectionStart = cursor + cursorAdjustment;
-            textarea.selectionEnd = cursor + cursorAdjustment;
+            textarea.selectionStart = cursor + TAB_SIZE;
+            textarea.selectionEnd = cursor + TAB_SIZE;
             textarea.focus();
           }, 0);
           return;
@@ -340,25 +372,12 @@ function Block({
       return;
     }
 
-    if (blockType === "code") {
-      const firstLine = content.slice(0, content.indexOf("\n"));
-      setContent(`${firstLine}\n${textarea.value}\n\`\`\``);
-      logEvent("edit-code-block");
-      return;
-    }
-    if (blockType === "math") {
-      setContent(`$$\n${textarea.value}\n$$`);
-      logEvent("edit-math-block");
-      return;
-    }
-
-    logEvent("edit-text-block", { value: textarea.value });
-    setContent(textarea.value || EMPTY_SPECIAL_STRING);
+    setFromTextareaContent(textarea.value);
   }, [blockType, content, setContent]);
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
-    textarea.style.height = "auto";
+    textarea.style.height = "";
   }
 
   useEffect(() => {
@@ -396,7 +415,7 @@ function Block({
           ref={textareaRef}
         />
       </div>
-      <div style={{ flex: 1, marginLeft: "12px" }}>
+      <div style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}>
         {post(processor.runSync({ type: "root", children: [ast] }), mdopts)}
       </div>
     </div>

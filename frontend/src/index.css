@@ -154,18 +154,17 @@ html {
   font-family: inherit;
   font-size: 13px;
   padding: 10px;
-  tab-size: 2;
   outline: none;
 }
 
 .textarea-for-block {
   width: 100%;
-  height: auto;
   resize: none;
   background: #fcfcfc;
   font-family: inherit;
   font-size: 13px;
-  tab-size: 2;
+  height: auto;
+  field-sizing: content;
   outline: none;
 }
 
