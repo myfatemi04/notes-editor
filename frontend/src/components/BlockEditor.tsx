@@ -41,7 +41,7 @@ function Block({
     content === EMPTY_SPECIAL_STRING
       ? ""
       : blockType === "code"
-      ? content.slice(content.indexOf("\n") + 1, content.lastIndexOf("```"))
+      ? content.slice(content.indexOf("\n") + 1, content.lastIndexOf("\n```"))
       : blockType === "math"
       ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
         content.slice("$$\n".length, content.length - "\n$$".length)
@@ -105,6 +105,13 @@ function Block({
         return;
       }
 
+      const currentLineStart = textarea.value.lastIndexOf("\n", cursor - 1) + 1;
+      const currentLineEnd = textarea.value.indexOf("\n", cursor);
+      const currentLine =
+        currentLineEnd === -1
+          ? textarea.value.slice(currentLineStart)
+          : textarea.value.slice(currentLineStart, currentLineEnd);
+
       // Pressing Enter in a block should create a new block below, with the content of the current block split at the cursor.
       if (e.key === "Enter") {
         // Check if a math or code block, in which case we shouldn't split.
@@ -116,6 +123,74 @@ function Block({
         }
 
         e.preventDefault();
+
+        // Check if an unordered list item.
+        if (currentLine.trimStart().startsWith("- ")) {
+          // If the current line is a (non-empty) list item, pressing Enter should add another list item after this line.
+          const indentation = currentLine.indexOf("- ");
+
+          if (currentLine.slice(indentation + 2).trim() === "") {
+            // Line is an empty list item.
+            split(cursor);
+            logEvent("split-empty-unordered-list-item", { cursor });
+            return;
+          }
+
+          const newListItemPrefix = "\n" + " ".repeat(indentation) + "- ";
+          const before = textarea.value.slice(0, cursor);
+          const after = textarea.value.slice(cursor);
+          const newContent = before + newListItemPrefix + after;
+          setContent(newContent);
+          logEvent("insert-unordered-list-item", {
+            cursor,
+            before,
+            newListItemPrefix,
+            after,
+          });
+          setTimeout(() => {
+            textarea.selectionStart = (before + newListItemPrefix).length;
+            textarea.selectionEnd = textarea.selectionStart;
+            textarea.focus();
+          }, 0);
+          return;
+        }
+
+        // Check if a numbered list item.
+        const numberedListMatch = currentLine.trimStart().match(/^(\d+)\. /);
+        if (numberedListMatch) {
+          const indentation = currentLine.indexOf(numberedListMatch[0]);
+          const number = parseInt(numberedListMatch[1], 10);
+          if (
+            currentLine
+              .slice(indentation + numberedListMatch[0].length)
+              .trim() === ""
+          ) {
+            // Line is an empty list item.
+            split(cursor);
+            logEvent("split-empty-numbered-list-item", { cursor });
+            return;
+          }
+
+          const newListItemPrefix =
+            "\n" + " ".repeat(indentation) + (number + 1) + ". ";
+          const before = textarea.value.slice(0, cursor);
+          const after = textarea.value.slice(cursor);
+          const newContent = before + newListItemPrefix + after;
+          setContent(newContent);
+          logEvent("insert-numbered-list-item", {
+            cursor,
+            before,
+            newListItemPrefix,
+            after,
+          });
+          setTimeout(() => {
+            textarea.selectionStart = (before + newListItemPrefix).length;
+            textarea.selectionEnd = textarea.selectionStart;
+            textarea.focus();
+          }, 0);
+          return;
+        }
+
         split(cursor);
         logEvent("split", { cursor });
         return;
@@ -136,6 +211,98 @@ function Block({
         e.preventDefault();
         mergePrevious();
         logEvent("merge-previous");
+        return;
+      }
+
+      if (e.key === "Backspace" && currentLine.trim() === "-") {
+        // If the current line is just a list item marker, remove it.
+        e.preventDefault();
+        const before = textarea.value.slice(0, currentLineStart);
+        const after =
+          currentLineEnd === -1 ? "" : textarea.value.slice(currentLineEnd + 1);
+        const newContent = before + after;
+        setContent(newContent);
+        logEvent("remove-list-item-marker", { cursor, before, after });
+        setTimeout(() => {
+          textarea.selectionStart = before.length - 1;
+          textarea.selectionEnd = textarea.selectionStart;
+          textarea.focus();
+        }, 0);
+      }
+
+      if (e.key === "Tab") {
+        // Allow tabbing in LaTeX or code blocks.
+        if (blockType !== "text") {
+          return;
+        }
+
+        e.preventDefault();
+
+        // Check if on a line with a list item.
+        const lineStart = textarea.value.lastIndexOf("\n", cursor - 1) + 1;
+        const lineEnd = textarea.value.indexOf("\n", cursor);
+        const line =
+          lineEnd === -1
+            ? textarea.value.slice(lineStart)
+            : textarea.value.slice(lineStart, lineEnd);
+
+        if (
+          line.trimStart().startsWith("- ") ||
+          line.trimStart().match(/^\d+\. /)
+        ) {
+          // Increase indentation of list item.
+          const before = textarea.value.slice(0, lineStart);
+          const after = lineEnd === -1 ? "" : textarea.value.slice(lineEnd);
+
+          let newLine: string;
+          let cursorAdjustment = 0;
+          if (e.shiftKey) {
+            // Decrease indentation.
+            if (line.startsWith("    ")) {
+              newLine = line.slice(4);
+              cursorAdjustment = -4;
+            } else if (line.startsWith("   ")) {
+              newLine = line.slice(3);
+              cursorAdjustment = -3;
+            } else if (line.startsWith("  ")) {
+              newLine = line.slice(2);
+              cursorAdjustment = -2;
+            } else if (line.startsWith(" ")) {
+              newLine = line.slice(1);
+              cursorAdjustment = -1;
+            } else {
+              // Can't decrease indentation anymore.
+              newLine = line;
+            }
+          } else {
+            if (line.trimStart().match(/^(\d+)\. /)) {
+              // Numbered list item; the number should reset to 1.
+              const indentation = " ".repeat(
+                line.length - line.trimStart().length + 4
+              );
+              const contentStart = line.indexOf(".") + 1;
+              newLine = `${indentation}1. ${line
+                .slice(contentStart)
+                .trimStart()}`;
+            } else {
+              // Unordered list item.
+              newLine = "    " + line;
+            }
+            cursorAdjustment = 4;
+          }
+          const newContent = before + newLine + after;
+          setContent(newContent);
+          logEvent("indent-list-item", { cursor, before, newLine, after });
+
+          setTimeout(() => {
+            textarea.selectionStart = cursor + cursorAdjustment;
+            textarea.selectionEnd = cursor + cursorAdjustment;
+            textarea.focus();
+          }, 0);
+          return;
+        }
+
+        document.execCommand("insertText", false, "  ");
         return;
       }
     };
@@ -185,9 +352,9 @@ function Block({
       return;
     }
 
-    logEvent("edit-text-block");
-    setContent(textarea.value);
-  }, [blockType, content]);
+    logEvent("edit-text-block", { value: textarea.value });
+    setContent(textarea.value || EMPTY_SPECIAL_STRING);
+  }, [blockType, content, setContent]);
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
@@ -197,8 +364,14 @@ function Block({
   useEffect(() => {
     // This should only apply in the beginning.
     if (editing && textareaRef.current) {
+      if (initialCursorPosition < 0) {
+        initialCursorPosition =
+          textareaContent.length + initialCursorPosition + 1;
+      }
+
       textareaRef.current.selectionStart = initialCursorPosition;
       textareaRef.current.selectionEnd = initialCursorPosition;
+      textareaRef.current.focus();
     }
   }, [editing]);
 
@@ -284,6 +457,7 @@ export default function BlockEditor({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const children = tree.children.filter((child) => !!child.position);
   const previousValuesRef = useRef<string[]>([]);
+  const nextInitialCursorPositionRef = useRef<number>(0);
 
   const normalized = useMemo(() => normalize(content, tree), [content, tree]);
 
@@ -295,6 +469,8 @@ export default function BlockEditor({
       setContent(normalized);
     }, 0);
   }
+
+  console.log({ content });
 
   useEffect(() => {
     if (content == previousValuesRef.current.at(-1)) {
@@ -345,10 +521,13 @@ export default function BlockEditor({
           const beforeThisBlock = content.slice(0, start);
           const afterThisBlock = content.slice(end);
           const newBlockContent = newBlockContentWithoutDelimiter + "\n\n";
-          setContent(`${beforeThisBlock}${newBlockContent}${afterThisBlock}`);
+          const newDocumentContent = `${beforeThisBlock}${newBlockContent}${afterThisBlock}`;
+
+          setContent(newDocumentContent);
 
           if (newBlockContent.trim() === "" && i > 0) {
             setEditingIndex(i - 1);
+            nextInitialCursorPositionRef.current = -1;
           }
         };
 
@@ -364,32 +543,47 @@ export default function BlockEditor({
             previousStart,
             previousEnd
           );
-          const previousChildContent =
+
+          // Handles EMPTY_SPECIAL_STRING on nextInitialCursorPositionRef.
+          let previousChildContent =
             previousChildContentIncludingDelimiter.slice(0, -2);
+          if (previousChildContent === EMPTY_SPECIAL_STRING) {
+            previousChildContent = "";
+          }
+
           const previousChildContentUpdated =
             previousChildContent +
-            (blockContent !== EMPTY_SPECIAL_STRING ? blockContent : "");
+              (blockContent !== EMPTY_SPECIAL_STRING ? blockContent : "") ||
+            EMPTY_SPECIAL_STRING;
 
           const beforePreviousBlock = content.slice(0, previousStart);
           const afterThisBlock = content.slice(end);
           const newDocumentContent = `${beforePreviousBlock}${previousChildContentUpdated}\n\n${afterThisBlock}`;
           setContent(newDocumentContent);
           setEditingIndex(i - 1);
+          nextInitialCursorPositionRef.current = previousChildContent.length;
         };
 
         const split = (at: number) => {
-          const before = blockContent.slice(0, at);
-          const after = blockContent.slice(at);
+          // This function should only be called on text blocks.
+          const effectiveContent =
+            blockContent === EMPTY_SPECIAL_STRING ? "" : blockContent;
+          const before = effectiveContent.slice(0, at) || EMPTY_SPECIAL_STRING;
+          const after = effectiveContent.slice(at) || EMPTY_SPECIAL_STRING;
+
           const beforeWithDelimiter = before + "\n\n";
           const afterWithDelimiter = `${
             after.trim() ? after : EMPTY_SPECIAL_STRING
           }\n\n`;
+
+          console.log({ before, after });
 
           const beforeThisBlock = content.slice(0, start);
           const afterThisBlock = content.slice(end);
           const newDocumentContent = `${beforeThisBlock}${beforeWithDelimiter}${afterWithDelimiter}${afterThisBlock}`;
           setContent(newDocumentContent);
           setEditingIndex(i + 1);
+          nextInitialCursorPositionRef.current = 0;
         };
 
         return (
@@ -411,7 +605,7 @@ export default function BlockEditor({
                 setEditingIndex(i + 1);
               }
             }}
-            initialCursorPosition={0}
+            initialCursorPosition={nextInitialCursorPositionRef.current}
             content={blockContent}
             mergePrevious={mergePrevious}
             split={split}
