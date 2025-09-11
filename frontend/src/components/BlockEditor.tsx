@@ -30,6 +30,7 @@ function Block({
   undo,
   mergePrevious,
   split,
+  file,
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockType = content.startsWith("```")
@@ -42,7 +43,10 @@ function Block({
     content === EMPTY_SPECIAL_STRING
       ? ""
       : blockType === "code"
-      ? content.slice(content.indexOf("\n") + 1, content.lastIndexOf("\n```"))
+      ? // Skip the language declaration and unescape backticks.
+        content
+          .slice(content.indexOf("\n") + 1, content.lastIndexOf("\n```"))
+          .replace(/\\`/g, "`")
       : blockType === "math"
       ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
         content.slice("$$\n".length, content.length - "\n$$".length)
@@ -52,7 +56,12 @@ function Block({
     (textareaContent: string) => {
       if (blockType === "code") {
         const firstLine = content.slice(0, content.indexOf("\n"));
-        setContent(`${firstLine}\n${textareaContent}\n\`\`\``);
+        const newContent = `${firstLine}\n${textareaContent.replace(
+          /`/g,
+          "\\`"
+        )}\n\`\`\``;
+        logEvent("edit-block-code", { textareaContent, newContent });
+        setContent(newContent);
         return;
       }
       if (blockType === "math") {
@@ -91,7 +100,8 @@ function Block({
       // Pressing arrow keys on first or last lines should move to previous/next block
       if (
         e.key === "ArrowUp" &&
-        (firstLineEnd === -1 || cursor < firstLineEnd)
+        // (firstLineEnd === -1 || cursor < firstLineEnd)
+        cursor === 0
       ) {
         e.preventDefault();
         editPrevious();
@@ -101,7 +111,8 @@ function Block({
 
       if (
         e.key === "ArrowDown" &&
-        (lastLineStart === 0 || cursor > lastLineStart)
+        // (lastLineStart === 0 || cursor > lastLineStart)
+        cursor === textarea.value.length
       ) {
         e.preventDefault();
         editNext();
@@ -355,24 +366,26 @@ function Block({
   const onChange = useCallback(() => {
     const textarea = textareaRef.current!;
 
-    // Create math blocks.
-    if (
-      (textarea.value.endsWith("$$") && !textarea.value.startsWith("$$")) ||
-      textarea.value === "$$"
-    ) {
-      logEvent("create-math-block");
-      setContent(textarea.value + "\n\n$$\n\n");
-      return;
-    }
+    if (blockType === "text") {
+      // Create math blocks.
+      if (
+        (textarea.value.endsWith("$$") && !textarea.value.startsWith("$$")) ||
+        textarea.value === "$$"
+      ) {
+        logEvent("create-math-block");
+        setContent(textarea.value + "\n\n$$\n\n");
+        return;
+      }
 
-    // Create code blocks.
-    if (
-      (textarea.value.endsWith("```") && !textarea.value.startsWith("```")) ||
-      textarea.value === "```"
-    ) {
-      logEvent("create-code-block");
-      setContent(textarea.value + "\n\n```\n\n");
-      return;
+      // Create code blocks.
+      if (
+        (textarea.value.endsWith("```") && !textarea.value.startsWith("```")) ||
+        textarea.value === "```"
+      ) {
+        logEvent("create-code-block");
+        setContent(textarea.value + "\n\n```\n\n");
+        return;
+      }
     }
 
     setFromTextareaContent(textarea.value);
@@ -397,11 +410,22 @@ function Block({
     }
   }, [editing]);
 
+  const setCodeLang = useCallback((newLang: string) => {
+    const textarea = textareaRef.current!;
+    const firstLine = textarea.value.split("\n")[0];
+    const newContent = `\`\`\`${newLang}\n${textarea.value}\`\`\``;
+    console.log({ newContent });
+    setContent(newContent);
+  }, []);
+
+  const maxWidth = !editing ? "600px" : "1200px";
+
   return (
     <div
       style={{
         borderBottom: "1px solid red",
-        padding: "12px",
+        paddingLeft: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
+        paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
         display: "flex",
         alignItems: "center",
         minHeight: "10px",
@@ -411,6 +435,23 @@ function Block({
       <div style={{ flex: 1, display: editing ? "block" : "none" }}>
         {/* Mutually exclusive. */}
         {blockType !== "text" && `(${blockType})`}
+        {blockType === "code" &&
+          (() => {
+            // Try to extract language from first line.
+            const firstLine = content.slice(0, content.indexOf("\n"));
+            const lang = firstLine.slice("```".length).trim();
+            return (
+              <select
+                className="language-select-for-block"
+                value={lang}
+                onChange={(e) => setCodeLang(e.target.value)}
+              >
+                <option value="">Select language...</option>
+                <option value="text">Text</option>
+                <option value="dag">DAG</option>
+              </select>
+            );
+          })()}
         <textarea
           className="textarea-for-block"
           value={textareaContent}
@@ -419,7 +460,10 @@ function Block({
         />
       </div>
       <div style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}>
-        {post(processor.runSync({ type: "root", children: [ast] }), mdopts)}
+        {post(
+          processor.runSync({ type: "root", children: [ast] }, file),
+          mdopts
+        )}
       </div>
     </div>
   );
@@ -625,24 +669,31 @@ export default function BlockEditor({
             ast={child}
             mdopts={mdopts}
             setContent={setBlockContent}
-            editMe={() => setEditingIndex(i)}
+            editMe={() => {
+              setEditingIndex(i);
+              nextInitialCursorPositionRef.current = 0;
+            }}
             editPrevious={() => {
               if (i > 0) {
                 setEditingIndex(i - 1);
+                nextInitialCursorPositionRef.current = -1;
               }
             }}
             editNext={() => {
               if (i < children.length - 1) {
                 setEditingIndex(i + 1);
+                nextInitialCursorPositionRef.current = 0;
               }
             }}
             initialCursorPosition={nextInitialCursorPositionRef.current}
             content={blockContent}
             mergePrevious={mergePrevious}
             split={split}
+            file={file}
           />
         );
       })}
+      <div style={{ height: "100vh" }}></div>
     </div>
   );
 }

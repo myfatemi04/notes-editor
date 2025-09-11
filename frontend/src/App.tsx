@@ -9,6 +9,7 @@ import {
 } from "./components/Modals";
 import { api, setAccessToken } from "./lib/api";
 import { FileTree } from "./lib/types";
+import Dag from "./components/Dag";
 
 export default function App() {
   const [tree, setTree] = useState<FileTree | null>(null);
@@ -26,6 +27,20 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
 
   const dirty = content !== savedContent && currentPath.length > 0;
+
+  // Warn for unsaved changes.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue =
+          "Are you sure you want to leave? You have unsaved changes.";
+        return e.returnValue;
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   async function refreshTree(keepPath?: string) {
     try {
@@ -170,13 +185,28 @@ export default function App() {
         </div>
 
         <BlockEditor
+          key={currentPath} // reset editor state when switching files
           content={content}
           setContent={setContent}
           disabled={!currentPath || loading}
           components={{
-            pre: (props: Record<string, unknown>) => (
-              <pre {...props} className="code-pre" />
-            ),
+            pre: ({ children, node }) => {
+              const code = (children.props.children ?? "").replace(/\\`/g, "`");
+              const classes = node.children[0].properties.className;
+
+              if (classes.length === 0) {
+                return <pre className="code-pre">{code}</pre>;
+              }
+
+              if (classes.length > 0) {
+                // Check if a DAG.
+                if (classes[0] === "language-dag") {
+                  return <Dag code={code} />;
+                }
+
+                return <pre className={`code-pre ${classes[0]}`}>{code}</pre>;
+              }
+            },
           }}
         />
       </main>
