@@ -450,7 +450,14 @@ export default function Canvas() {
   }, [strokes, render]);
 
   return (
-    <div>
+    <div
+      style={{
+        marginTop: 4,
+        marginBottom: 4,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <div
         style={{
           display: editing ? "flex" : "none",
@@ -504,7 +511,7 @@ export default function Canvas() {
         style={{
           border: "1px solid black",
           aspectRatio: "4 / 3",
-          width: "100%",
+          width: "calc(max(600px, calc(100% - 24px)))",
         }}
         width={800 * SCALE}
         height={600 * SCALE}

@@ -456,8 +456,6 @@ function Block({
         borderBottom: "1px solid red",
         paddingLeft: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
         paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
-        paddingTop: "4px",
-        paddingBottom: "4px",
         display: "flex",
         alignItems: "center",
         minHeight: "10px",
@@ -476,7 +474,12 @@ function Block({
         </CanvasHostContext.Provider>
       ) : (
         <>
-          <div style={{ flex: 1, display: editing ? "block" : "none" }}>
+          <div
+            style={{
+              flex: 1,
+              display: editing ? "block" : "none",
+            }}
+          >
             {/* Mutually exclusive. */}
             {blockType !== "text" && `(${blockType})`}
             {blockType === "code" &&
@@ -505,7 +508,15 @@ function Block({
             />
           </div>
           <div
-            style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}
+            style={{
+              flex: 1,
+              marginLeft: "12px",
+              fontFamily: "sans-serif",
+              borderLeft: "1px solid black",
+              borderRight: "1px solid black",
+              paddingLeft: "12px",
+              paddingRight: "12px",
+            }}
           >
             {post(
               processor.runSync(

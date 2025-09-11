@@ -21,6 +21,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [showSidebar, setShowSidebar] = useState(true);
 
   const [showCreate, setShowCreate] = useState(false);
   const [showRename, setShowRename] = useState(false);
@@ -122,6 +123,12 @@ export default function App() {
         <div className="toolbar">
           <button
             className="button"
+            onClick={() => setShowSidebar(!showSidebar)}
+          >
+            {showSidebar ? "Hide" : "Show"} Sidebar
+          </button>
+          <button
+            className="button"
             onClick={() => void refreshTree(currentPath)}
           >
             Refresh
@@ -156,7 +163,10 @@ export default function App() {
         </div>
       </div>
 
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        style={{ display: showSidebar ? "block" : "none" }}
+      >
         {tree ? (
           <FileTreeView tree={tree} onOpen={openFile} />
         ) : (
@@ -164,7 +174,10 @@ export default function App() {
         )}
       </aside>
 
-      <main className="main">
+      <main
+        className="main"
+        style={{ gridColumn: !showSidebar ? "1 / -1" : undefined }}
+      >
         <div className="pathbar">
           <span>Path:</span>
           {currentPath ? (
