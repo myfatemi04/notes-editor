@@ -431,57 +431,64 @@ function Block({
         borderBottom: "1px solid red",
         paddingLeft: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
         paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
+        paddingTop: "4px",
+        paddingBottom: "4px",
         display: "flex",
         alignItems: "center",
         minHeight: "10px",
       }}
       onClick={() => !editing && editMe()}
     >
-      <div style={{ flex: 1, display: editing ? "block" : "none" }}>
-        {/* Mutually exclusive. */}
-        {blockType !== "text" && `(${blockType})`}
-        {blockType === "code" &&
-          (() => {
-            // Try to extract language from first line.
-            const firstLine = content.slice(0, content.indexOf("\n"));
-            const lang = firstLine.slice("```".length).trim();
-            return (
-              <select
-                className="language-select-for-block"
-                value={lang}
-                onChange={(e) => setCodeLang(e.target.value)}
-              >
-                <option value="">Select language...</option>
-                <option value="text">Text</option>
-                <option value="dag">DAG</option>
-                <option value="canvas">Canvas</option>
-              </select>
-            );
-          })()}
-        <textarea
-          className="textarea-for-block"
-          value={textareaContent}
-          onChange={onChange}
-          ref={textareaRef}
-        />
-      </div>
-      <div style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}>
-        {blockType === "code" && language === "canvas" ? (
-          <CanvasHostContext.Provider
-            value={{
-              setB64: setFromTextareaContent,
-              b64: textareaContent,
-            }}
+      {blockType === "code" && language === "canvas" ? (
+        <CanvasHostContext.Provider
+          value={{
+            setB64: setFromTextareaContent,
+            b64: textareaContent,
+            editing,
+          }}
+        >
+          <Canvas />
+        </CanvasHostContext.Provider>
+      ) : (
+        <>
+          <div style={{ flex: 1, display: editing ? "block" : "none" }}>
+            {/* Mutually exclusive. */}
+            {blockType !== "text" && `(${blockType})`}
+            {blockType === "code" &&
+              (() => {
+                // Try to extract language from first line.
+                const firstLine = content.slice(0, content.indexOf("\n"));
+                const lang = firstLine.slice("```".length).trim();
+                return (
+                  <select
+                    className="language-select-for-block"
+                    value={lang}
+                    onChange={(e) => setCodeLang(e.target.value)}
+                  >
+                    <option value="">Select language...</option>
+                    <option value="text">Text</option>
+                    <option value="dag">DAG</option>
+                    <option value="canvas">Canvas</option>
+                  </select>
+                );
+              })()}
+            <textarea
+              className="textarea-for-block"
+              value={textareaContent}
+              onChange={onChange}
+              ref={textareaRef}
+            />
+          </div>
+          <div
+            style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}
           >
-            <Canvas />
-          </CanvasHostContext.Provider>
-        ) : (
-          post(
-            processor.runSync({ type: "root", children: [ast] }, file),
-            mdopts
-          )
-        )}
-      </div>
+            {post(
+              processor.runSync({ type: "root", children: [ast] }, file),
+              mdopts
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -713,7 +720,7 @@ export default function BlockEditor({
       <button onClick={() => setContent(content + "\n\n(empty)\n\n")}>
         Add block
       </button>
-      <div style={{ height: "100vh" }}></div>
+      <div style={{ height: "100vh" }} onClick={() => setEditingIndex(null)} />
     </div>
   );
 }

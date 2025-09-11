@@ -27,15 +27,24 @@ export interface Stroke {
 const SCALE = 8;
 const LITTLE_ENDIAN = true;
 
-function renderTriplet(context, p0, p1, p2) {
+function renderTriplet(
+  context: CanvasRenderingContext2D,
+  p0: Point,
+  p1: Point,
+  p2: Point,
+  r: number,
+  g: number,
+  b: number,
+  erase: boolean
+) {
   const cp1x = ((p0.x + p1.x) / 2) * SCALE;
   const cp1y = ((p0.y + p1.y) / 2) * SCALE;
   const cp2x = ((p1.x + p2.x) / 2) * SCALE;
   const cp2y = ((p1.y + p2.y) / 2) * SCALE;
 
-  context.lineWidth = ((8 * (p0.force + p1.force + p2.force)) / 3 + 2) * SCALE;
+  context.lineWidth = (p0.thickness + p1.thickness + p2.thickness) / 3;
   context.lineCap = "round";
-  context.strokeStyle = "black";
+  context.strokeStyle = erase ? "white" : `rgb(${r}, ${g}, ${b})`;
 
   context.beginPath();
   context.moveTo(cp1x, cp1y);
@@ -46,6 +55,7 @@ function renderTriplet(context, p0, p1, p2) {
 export const CanvasHostContext = createContext({
   b64: "",
   setB64: (b64: string) => {},
+  editing: false,
 });
 
 async function serialize(strokes: Stroke[]): Promise<string> {
@@ -60,18 +70,20 @@ async function serialize(strokes: Stroke[]): Promise<string> {
     // 2. number of *additional* colors (max 254, 0 is reserved for eraser, 1 is reserved for black)
     0,
   ];
-  const colors = { eraser: 0, "0,0,0": 1 };
+  const colors = new Map();
+  colors.set("eraser", 0);
+  colors.set("0,0,0", 1);
   for (const stroke of strokes) {
     const colorKey = stroke.erase
       ? "eraser"
       : `${stroke.r},${stroke.g},${stroke.b}`;
-    if (!colors[colorKey]) {
-      colors[colorKey] = Object.keys(colors).length + 1;
+    if (!colors.has(colorKey)) {
+      colors.set(colorKey, colors.size);
+      header[5]++;
+      header.push(stroke.r);
+      header.push(stroke.g);
+      header.push(stroke.b);
     }
-    header.push(stroke.r);
-    header.push(stroke.g);
-    header.push(stroke.b);
-    header[5]++;
   }
 
   // 4: number of strokes
@@ -98,7 +110,7 @@ async function serialize(strokes: Stroke[]): Promise<string> {
     const colorKey = stroke.erase
       ? "eraser"
       : `${stroke.r},${stroke.g},${stroke.b}`;
-    view.setUint8(strokeBytesOffset, colors[colorKey]);
+    view.setUint8(strokeBytesOffset, colors.get(colorKey));
     strokeBytesOffset += 1;
 
     for (const p of stroke.points) {
@@ -106,7 +118,7 @@ async function serialize(strokes: Stroke[]): Promise<string> {
       strokeBytesOffset += 2;
       view.setUint16(strokeBytesOffset, Math.round(p.y), LITTLE_ENDIAN);
       strokeBytesOffset += 2;
-      view.setUint8(strokeBytesOffset, Math.round(p.thickness * 255));
+      view.setUint8(strokeBytesOffset, Math.round(p.thickness));
       strokeBytesOffset += 1;
     }
   }
@@ -156,14 +168,16 @@ function deserialize(b64: string): Stroke[] {
   }
 
   const strokes: Stroke[] = [];
-  const strokeBytes = new DataView(buf.buffer, offset);
-  const numStrokes = strokeBytes.getUint32(0);
+  const strokeBytes = new DataView(buf.buffer);
+  const numStrokes = strokeBytes.getUint32(offset, LITTLE_ENDIAN);
+  offset += 4;
 
   for (let i = 0; i < numStrokes; i++) {
     // number of points (Uint32)
-    const numPoints = strokeBytes.getUint32(4 + i * 4, LITTLE_ENDIAN);
-    const colorIndex = strokeBytes.getUint8(4 + numStrokes * 4 + i);
+    const numPoints = strokeBytes.getUint32(offset, LITTLE_ENDIAN);
     offset += 4;
+    const colorIndex = strokeBytes.getUint8(offset);
+    offset += 1;
 
     const points: Point[] = [];
     for (let j = 0; j < numPoints; j++) {
@@ -179,7 +193,7 @@ function deserialize(b64: string): Stroke[] {
       points.push({
         x,
         y,
-        thickness: thickByte / 255,
+        thickness: thickByte,
         time: 0,
       });
     }
@@ -224,15 +238,7 @@ export default function Canvas() {
   const [fakeConsole, setFakeConsole] = useState<string>("");
   const [colorPaletteIndex, setColorPaletteIndex] = useState(1);
 
-  const { b64, setB64 } = useContext(CanvasHostContext);
-
-  useEffect(() => {
-    if (!b64) {
-      return;
-    }
-
-    setStrokes(deserialize(b64));
-  }, [b64]);
+  const { b64, setB64, editing } = useContext(CanvasHostContext);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -248,25 +254,28 @@ export default function Canvas() {
       return;
     }
 
-    const onTouchStart = (e: TouchEvent) => {
-      // Only supported by Safari.
-      // @ts-expect-error `touchType` not declared.
-      const touchType = e.changedTouches[0].touchType ?? "direct";
-      if (touchType !== "stylus") {
-        return;
-      }
-
-      e.preventDefault();
-
-      const touch = e.changedTouches[0];
+    const translateCoordinates = (clientX: number, clientY: number) => {
       const boundingRect = canvas.getBoundingClientRect();
       const x0 = boundingRect.left;
       const y0 = boundingRect.top;
 
+      const x = (((clientX - x0) / boundingRect.width) * canvas.width) / SCALE;
+      const y =
+        (((clientY - y0) / boundingRect.height) * canvas.height) / SCALE;
+      return { x, y };
+    };
+
+    const startStroke = (
+      clientX: number,
+      clientY: number,
+      force: number,
+      identifier: number
+    ) => {
+      const { x, y } = translateCoordinates(clientX, clientY);
       const point = {
-        x: touch.clientX - x0,
-        y: touch.clientY - y0,
-        thickness: 8 * (touch.force / (window.visualViewport?.scale ?? 1)) + 2,
+        x,
+        y,
+        thickness: 8 * (force / (window.visualViewport?.scale ?? 1)) + 2,
         time: Date.now(),
       };
 
@@ -274,7 +283,7 @@ export default function Canvas() {
 
       activeStroke.current = {
         points: [point],
-        touchIdentifier: touch.identifier,
+        touchIdentifier: identifier,
         r,
         g,
         b,
@@ -286,8 +295,8 @@ export default function Canvas() {
       context.ellipse(
         point.x * SCALE,
         point.y * SCALE,
-        ((8 * point.thickness + 2) * SCALE) / 2,
-        ((8 * point.thickness + 2) * SCALE) / 2,
+        point.thickness / 2,
+        point.thickness / 2,
         0,
         0,
         2 * Math.PI
@@ -295,121 +304,187 @@ export default function Canvas() {
       context.fill();
     };
 
-    const onTouchEnd = (e: TouchEvent) => {
-      // e.preventDefault();
+    const moveStroke = (clientX: number, clientY: number, force: number) => {
+      if (!activeStroke.current) return;
 
-      if (!activeStroke.current) {
+      const { x, y } = translateCoordinates(clientX, clientY);
+
+      activeStroke.current.points.push({
+        x,
+        y,
+        thickness: 8 * (force / (window.visualViewport?.scale ?? 1)) + 2,
+        time: Date.now(),
+      });
+
+      const { r, g, b, erase } = activeStroke.current;
+
+      const len = activeStroke.current.points.length;
+      const p0 = activeStroke.current.points.at(Math.max(0, len - 3))!;
+      const p1 = activeStroke.current.points.at(Math.max(0, len - 2))!;
+      const p2 = activeStroke.current.points.at(Math.max(0, len - 1))!;
+      renderTriplet(context, p0, p1, p2, r, g, b, erase);
+    };
+
+    const endStroke = () => {
+      if (!activeStroke.current) return;
+      if (activeStroke.current.points.length > 0) {
+        const currentStroke = activeStroke.current;
+        setStrokes((strokes) => {
+          serialize([...strokes, currentStroke]).then((b64) => {
+            setB64(b64);
+          });
+
+          return [...strokes, currentStroke];
+        });
+      }
+      activeStroke.current = null;
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      // Only supported by Safari.
+      // @ts-expect-error `touchType` not declared.
+      const touchType = e.changedTouches[0].touchType ?? "direct";
+      if (touchType !== "stylus") {
         return;
       }
 
-      for (const touch of e.changedTouches) {
-        if (activeStroke.current?.touchIdentifier === touch.identifier) {
-          if (activeStroke.current.points.length > 0) {
-            const currentStroke = activeStroke.current;
-            setStrokes((strokes) => {
-              serialize([...strokes, currentStroke]).then((b64) => {
-                setB64(b64);
-              });
+      e.preventDefault();
 
-              return [...strokes, currentStroke];
-            });
-          }
-          activeStroke.current = null;
-        }
-      }
+      const touch = e.changedTouches[0];
+      startStroke(touch.clientX, touch.clientY, touch.force, touch.identifier);
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const touch = [...e.changedTouches].filter(
+        (t) => t.identifier === activeStroke.current?.touchIdentifier
+      )[0];
+      if (!touch) return;
+      endStroke();
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!activeStroke.current) {
-        return;
-      }
+      const touch = [...e.changedTouches].filter(
+        (t) => t.identifier === activeStroke.current?.touchIdentifier
+      )[0];
+      if (!touch) return;
+      moveStroke(touch.clientX, touch.clientY, touch.force);
+    };
 
-      for (const touch of e.touches) {
-        if (touch.identifier !== activeStroke.current?.touchIdentifier) {
-          continue;
-        }
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // Assume a mouse has no pressure sensitivity.
+      startStroke(e.clientX, e.clientY, 1, -1);
+    };
 
-        e.preventDefault();
+    const onMouseMove = (e: MouseEvent) => {
+      moveStroke(e.clientX, e.clientY, 1);
+    };
 
-        const boundingRect = canvas.getBoundingClientRect();
-
-        const x = touch.clientX - boundingRect.left;
-        const y = touch.clientY - boundingRect.top;
-
-        if (activeStroke.current.points.length > 0) {
-          const lastPoint =
-            activeStroke.current.points[activeStroke.current.points.length - 1];
-          const dx = touch.clientX - boundingRect.left - lastPoint.x;
-          const dy = touch.clientY - boundingRect.top - lastPoint.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          // if (
-          //   (dist < 3 && Date.now() - lastPoint.time < 200) ||
-          //   Date.now() - lastPoint.time < 20
-          // ) {
-          //   // don't add point if too close to last point
-          //   return;
-          // }
-        }
-
-        activeStroke.current.points.push({
-          x,
-          y,
-          thickness: touch.force / window.visualViewport!.scale,
-          time: Date.now(),
-        });
-
-        if (activeStroke.current.points.length >= 3) {
-          const [p0, p1, p2] = activeStroke.current.points.slice(-3);
-          renderTriplet(context, p0, p1, p2);
-        }
-      }
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      endStroke();
     };
 
     canvas.addEventListener("touchstart", onTouchStart);
     canvas.addEventListener("touchend", onTouchEnd);
     canvas.addEventListener("touchmove", onTouchMove);
-    context.fillStyle = "white";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }, [colorPaletteIndex]);
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("mousemove", onMouseMove);
+    canvas.addEventListener("mouseup", onMouseUp);
+
+    if (b64) {
+      const strokes = deserialize(b64);
+      setStrokes(strokes);
+      render(strokes);
+    }
+
+    return () => {
+      canvas.removeEventListener("touchstart", onTouchStart);
+      canvas.removeEventListener("touchend", onTouchEnd);
+      canvas.removeEventListener("touchmove", onTouchMove);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("mousemove", onMouseMove);
+      canvas.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [colorPaletteIndex, b64]);
+
+  const render = useCallback(
+    (strokes: Stroke[]) => {
+      const context = contextRef.current;
+      const canvas = canvasRef.current;
+
+      if (!context || !canvas) {
+        return;
+      }
+
+      context.fillStyle = "white";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (const stroke of strokes) {
+        // console.log({
+        //   render: {
+        //     color: [
+        //       stroke.erase ? "eraser" : `${stroke.r},${stroke.g},${stroke.b}`,
+        //     ],
+        //   },
+        // });
+        for (let i = 0; i < stroke.points.length - 2; i++) {
+          const [p0, p1, p2] = stroke.points.slice(i, i + 3);
+          renderTriplet(
+            context,
+            p0,
+            p1,
+            p2,
+            stroke.r,
+            stroke.g,
+            stroke.b,
+            stroke.erase
+          );
+        }
+      }
+    },
+    [strokes]
+  );
 
   const undo = useCallback(() => {
-    setStrokes(strokes.slice(0, -1));
-
-    const context = contextRef.current!;
-    const canvas = canvasRef.current!;
-
-    context.fillStyle = "white";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    for (const stroke of strokes.slice(0, -1)) {
-      for (let i = 0; i < stroke.points.length - 2; i++) {
-        const [p0, p1, p2] = stroke.points.slice(i, i + 3);
-        renderTriplet(context, p0, p1, p2);
-      }
-    }
-  }, [strokes]);
+    const newStrokes = strokes.slice(0, -1);
+    setStrokes(newStrokes);
+    render(newStrokes);
+    serialize(newStrokes).then(setB64);
+  }, [strokes, render]);
 
   return (
     <div>
-      <div style={{ display: "flex", flexDirection: "row" }}>
+      <div
+        style={{
+          display: editing ? "flex" : "none",
+          flexDirection: "row",
+          paddingBottom: 4,
+          paddingTop: 4,
+        }}
+      >
+        <button onClick={undo} style={{ marginRight: 4 }} className="button">
+          Undo
+        </button>
         {COLOR_PALETTE.map((color, i) => {
           const selected = i === colorPaletteIndex;
           return (
             <div
               key={i}
               onClick={() => setColorPaletteIndex(i)}
+              className="button"
               style={{
-                width: 24,
-                height: 24,
                 backgroundColor: color.erase
                   ? "white"
                   : `rgb(${color.r}, ${color.g}, ${color.b})`,
-                borderBottom: selected ? "2px solid blue" : "1px solid gray",
+                borderBottom: selected ? "4px solid white" : "1px solid gray",
                 borderTop: selected ? "1px solid gray" : 0,
                 borderLeft: selected ? "1px solid gray" : 0,
                 borderRight: selected ? "1px solid gray" : 0,
                 marginRight: 4,
                 cursor: "pointer",
+                width: "32px",
               }}
             >
               {color.erase ? "Eraser" : ""}
@@ -417,10 +492,13 @@ export default function Canvas() {
           );
         })}
       </div>
-      <button onClick={undo}>Undo</button>
       <canvas
         ref={canvasRef}
-        style={{ border: "1px solid black", width: 800, height: 600 }}
+        style={{
+          border: "1px solid black",
+          aspectRatio: "4 / 3",
+          width: "100%",
+        }}
         width={800 * SCALE}
         height={600 * SCALE}
       />
