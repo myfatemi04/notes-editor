@@ -239,8 +239,11 @@ function Block({
         return;
       }
 
-      if (e.key === "Backspace" && currentLine.trim() === "-") {
-        // If the current line is just a list item marker, remove it.
+      // If the current line is just a list item marker, remove it.
+      if (
+        e.key === "Backspace" &&
+        (currentLine.trim() === "-" || currentLine.trim().match(/^\d+\. /))
+      ) {
         e.preventDefault();
         const before = textarea.value.slice(0, currentLineStart);
         const after =
@@ -461,14 +464,25 @@ function normalize(content, ast) {
 export default function BlockEditor({
   content,
   setContent,
-  allowedElements = undefined,
-  allowElement = undefined,
-  components = undefined,
-  disallowedElements = undefined,
-  skipHtml = undefined,
-  unwrapDisallowed = undefined,
-  urlTransform = undefined,
+  allowedElements,
+  allowElement,
+  components,
+  disallowedElements,
+  skipHtml,
+  unwrapDisallowed,
+  urlTransform,
   disabled = false,
+}: {
+  content: string;
+  setContent: (content: string) => void;
+  allowedElements?: string[] | undefined;
+  allowElement?: ((element: any) => boolean) | undefined;
+  components?: Record<string, unknown> | undefined;
+  disallowedElements?: string[] | undefined;
+  skipHtml?: boolean | undefined;
+  unwrapDisallowed?: boolean | undefined;
+  urlTransform?: ((url: string) => string) | undefined;
+  disabled?: boolean;
 }) {
   // Parse the content into top-level content, which we will use for blocks.
   const file = useMemo(() => createFile({ children: content }), [content]);
@@ -488,8 +502,6 @@ export default function BlockEditor({
       setContent(normalized);
     }, 0);
   }
-
-  console.log({ content });
 
   useEffect(() => {
     if (content == previousValuesRef.current.at(-1)) {

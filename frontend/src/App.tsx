@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Editor } from "./components/Editor";
+import { useEffect, useState } from "react";
+import BlockEditor from "./components/BlockEditor";
 import { FileTreeView } from "./components/FileTree";
 import {
   AuthModal,
@@ -9,7 +9,6 @@ import {
 } from "./components/Modals";
 import { api, setAccessToken } from "./lib/api";
 import { FileTree } from "./lib/types";
-import BlockEditor from "./components/BlockEditor";
 
 export default function App() {
   const [tree, setTree] = useState<FileTree | null>(null);
@@ -174,6 +173,11 @@ export default function App() {
           content={content}
           setContent={setContent}
           disabled={!currentPath || loading}
+          components={{
+            pre: (props: Record<string, unknown>) => (
+              <pre {...props} className="code-pre" />
+            ),
+          }}
         />
       </main>
 

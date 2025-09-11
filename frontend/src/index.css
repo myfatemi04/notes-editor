@@ -168,6 +168,13 @@ html {
   outline: none;
 }
 
+.code-pre {
+  background: #f0f0f0;
+  padding: 8px;
+  border: 1px solid #ccc;
+  overflow: auto;
+}
+
 .footer {
   grid-column: 1 / -1;
   display: flex;
