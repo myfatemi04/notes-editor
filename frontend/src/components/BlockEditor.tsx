@@ -46,8 +46,6 @@ function Block({
     ? "canvas"
     : "text";
 
-  console.log(ast);
-
   const textareaContent =
     content === EMPTY_SPECIAL_STRING
       ? ""
@@ -81,7 +79,8 @@ function Block({
           logEvent("remove-canvas-block");
           setContent("");
         } else {
-          setContent(`![@canvas](${CANVAS_URL_BASE + textareaContent})`);
+          const newContent = `![@canvas](${CANVAS_URL_BASE + textareaContent})`;
+          setContent(newContent);
         }
         return;
       }
@@ -409,10 +408,6 @@ function Block({
       }
 
       // Create canvas blocks.
-      console.log({
-        endsWithCanvas: textarea.value.endsWith("/canvas"),
-        value: textarea.value,
-      });
       if (textarea.value.endsWith("/canvas")) {
         logEvent("create-canvas-block");
         setContent(
@@ -421,9 +416,11 @@ function Block({
         );
         return;
       }
-    }
 
-    setFromTextareaContent(textarea.value);
+      setFromTextareaContent(textarea.value);
+    } else if (blockType === "code" || blockType === "math") {
+      setFromTextareaContent(textarea.value);
+    }
   }, [blockType, content, setContent]);
 
   if (textareaRef.current) {
@@ -448,16 +445,10 @@ function Block({
   const setCodeLang = useCallback((newLang: string) => {
     const textarea = textareaRef.current!;
     const newContent = `\`\`\`${newLang}\n${textarea.value}\`\`\``;
-    console.log({ newContent });
     setContent(newContent);
   }, []);
 
   const maxWidth = !editing ? "600px" : "1200px";
-
-  const language =
-    blockType === "code"
-      ? content.slice(0, content.indexOf("\n")).slice("```".length).trim()
-      : null;
 
   return (
     <div
@@ -517,7 +508,10 @@ function Block({
             style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}
           >
             {post(
-              processor.runSync({ type: "root", children: [ast] }, file),
+              processor.runSync(
+                { type: "root", children: [JSON.parse(JSON.stringify(ast))] },
+                file
+              ),
               mdopts
             )}
           </div>
@@ -601,6 +595,7 @@ export default function BlockEditor({
     // Must be done asynchronously so that parent component finishes rendering first.
     setTimeout(() => {
       logEvent("normalize", { normalized });
+      // alert("normalizing to " + normalized);
       setContent(normalized);
     }, 0);
   }
@@ -655,7 +650,6 @@ export default function BlockEditor({
           const afterThisBlock = content.slice(end);
           const newBlockContent = newBlockContentWithoutDelimiter + "\n\n";
           const newDocumentContent = `${beforeThisBlock}${newBlockContent}${afterThisBlock}`;
-
           setContent(newDocumentContent);
 
           if (newBlockContent.trim() === "" && i > 0) {
@@ -708,8 +702,6 @@ export default function BlockEditor({
           const afterWithDelimiter = `${
             after.trim() ? after : EMPTY_SPECIAL_STRING
           }\n\n`;
-
-          console.log({ before, after });
 
           const beforeThisBlock = content.slice(0, start);
           const afterThisBlock = content.slice(end);

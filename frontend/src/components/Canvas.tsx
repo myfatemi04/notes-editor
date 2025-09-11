@@ -392,6 +392,7 @@ export default function Canvas() {
     canvas.addEventListener("mousedown", onMouseDown);
     canvas.addEventListener("mousemove", onMouseMove);
     canvas.addEventListener("mouseup", onMouseUp);
+    canvas.addEventListener("mouseleave", onMouseUp);
 
     if (b64) {
       const strokes = deserialize(b64);
@@ -406,6 +407,7 @@ export default function Canvas() {
       canvas.removeEventListener("mousedown", onMouseDown);
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseup", onMouseUp);
+      canvas.removeEventListener("mouseleave", onMouseUp);
     };
   }, [colorPaletteIndex, b64]);
 
@@ -422,13 +424,6 @@ export default function Canvas() {
       context.fillRect(0, 0, canvas.width, canvas.height);
 
       for (const stroke of strokes) {
-        // console.log({
-        //   render: {
-        //     color: [
-        //       stroke.erase ? "eraser" : `${stroke.r},${stroke.g},${stroke.b}`,
-        //     ],
-        //   },
-        // });
         for (let i = 0; i < stroke.points.length - 2; i++) {
           const [p0, p1, p2] = stroke.points.slice(i, i + 3);
           renderTriplet(
