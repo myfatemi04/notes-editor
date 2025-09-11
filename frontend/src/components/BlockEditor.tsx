@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { getEventListener } from "./pasteAsHTML";
 import { createFile, createProcessor, post } from "./rmd-modified";
+import Canvas, { CanvasHostContext } from "./Canvas";
 
 const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
@@ -412,13 +413,17 @@ function Block({
 
   const setCodeLang = useCallback((newLang: string) => {
     const textarea = textareaRef.current!;
-    const firstLine = textarea.value.split("\n")[0];
     const newContent = `\`\`\`${newLang}\n${textarea.value}\`\`\``;
     console.log({ newContent });
     setContent(newContent);
   }, []);
 
   const maxWidth = !editing ? "600px" : "1200px";
+
+  const language =
+    blockType === "code"
+      ? content.slice(0, content.indexOf("\n")).slice("```".length).trim()
+      : null;
 
   return (
     <div
@@ -449,6 +454,7 @@ function Block({
                 <option value="">Select language...</option>
                 <option value="text">Text</option>
                 <option value="dag">DAG</option>
+                <option value="canvas">Canvas</option>
               </select>
             );
           })()}
@@ -460,9 +466,20 @@ function Block({
         />
       </div>
       <div style={{ flex: 1, marginLeft: "12px", fontFamily: "sans-serif" }}>
-        {post(
-          processor.runSync({ type: "root", children: [ast] }, file),
-          mdopts
+        {blockType === "code" && language === "canvas" ? (
+          <CanvasHostContext.Provider
+            value={{
+              setB64: setFromTextareaContent,
+              b64: textareaContent,
+            }}
+          >
+            <Canvas />
+          </CanvasHostContext.Provider>
+        ) : (
+          post(
+            processor.runSync({ type: "root", children: [ast] }, file),
+            mdopts
+          )
         )}
       </div>
     </div>
@@ -693,6 +710,9 @@ export default function BlockEditor({
           />
         );
       })}
+      <button onClick={() => setContent(content + "\n\n(empty)\n\n")}>
+        Add block
+      </button>
       <div style={{ height: "100vh" }}></div>
     </div>
   );
