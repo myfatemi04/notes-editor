@@ -655,7 +655,18 @@ export default function BlockEditor({
 
   return (
     <div style={{ overflowY: "auto" }}>
-      <GraphDisplay graph={graph} />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          borderBottom: "1px solid red",
+          paddingTop: "12px",
+          paddingBottom: "12px",
+        }}
+      >
+        <GraphDisplay graph={graph} />
+      </div>
       {children.map((child, i) => {
         const start = child.position!.start.offset!;
         const end =

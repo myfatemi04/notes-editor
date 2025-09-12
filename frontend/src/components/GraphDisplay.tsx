@@ -1,10 +1,13 @@
 import {
+  forceCenter,
+  forceLink,
+  forceManyBody,
   forceSimulation,
   Simulation,
   SimulationLinkDatum,
   SimulationNodeDatum,
 } from "d3-force";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createBaseGraph, createLayout } from "../lib/createLayout";
 import { Graph } from "../lib/extractConceptGraph";
 
@@ -40,7 +43,7 @@ function isGraphUpdated(displayedGraph: Graph, currentGraph: Graph) {
 }
 
 export interface CustomNodeDatum extends SimulationNodeDatum {
-  symbol: string;
+  id: string;
 }
 
 export default function GraphDisplay({ graph }: { graph: Graph }) {
@@ -49,27 +52,52 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
       forceSimulation
     );
   const [layout, setLayout] = useState<Record<string, [number, number]>>();
+  const displayedGraphRef = useRef<Graph>();
 
   useEffect(() => {
-    const currentNodes = simulation.nodes();
-    simulation.nodes(
-      Array.from(graph.nodes).map(([symbol, node], i) => {
-        const existingNode = currentNodes.find((n) => n.symbol === symbol);
-        return existingNode ? existingNode : { symbol };
-      })
-    );
-  }, [graph]);
+    if (
+      !displayedGraphRef.current ||
+      isGraphUpdated(displayedGraphRef.current, graph)
+    ) {
+      console.log("Graph updated, creating new layout");
+
+      const indices = {};
+      const currentNodes = simulation.nodes();
+      simulation.nodes(
+        Array.from(graph.nodes).map(([symbol, node], i) => {
+          indices[symbol] = i;
+          const existingNode = currentNodes.find((n) => n.id === symbol);
+          return existingNode ? existingNode : { id: symbol };
+        })
+      );
+
+      const links: SimulationLinkDatum<CustomNodeDatum>[] = Array.from(
+        graph.edges.entries()
+      )
+        .map(([src, dstMap]) =>
+          Array.from(dstMap.keys()).map((dst) => ({
+            source: indices[src],
+            target: indices[dst],
+          }))
+        )
+        .flat();
+
+      simulation.force("charge", forceManyBody());
+      simulation.force("center", forceCenter());
+      simulation.force("link", forceLink(links));
+      simulation.alpha(1);
+      simulation.restart();
+    }
+  }, [graph, simulation]);
 
   useEffect(() => {
     simulation.on("tick", () => {
       const newLayout: Record<string, [number, number]> = {};
       simulation.nodes().forEach((node) => {
-        console.log({ node });
-        if (node.symbol && node.x !== undefined && node.y !== undefined) {
-          newLayout[node.symbol] = [node.x, node.y];
+        if (node.id && node.x !== undefined && node.y !== undefined) {
+          newLayout[node.id] = [node.x, node.y];
         }
       });
-      console.log({ newLayout });
       setLayout(newLayout);
     });
   }, []);
@@ -85,12 +113,12 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   const padding = 60;
   const effectiveCenters = {};
   for (const node of simulation.nodes()) {
-    if (node.symbol && layout && layout[node.symbol]) {
-      effectiveCenters[node.symbol] = [
-        (width * (layout[node.symbol][0] - minX)) / (maxX - minX) +
+    if (node.id && layout && layout[node.id]) {
+      effectiveCenters[node.id] = [
+        (width * (layout[node.id][0] - minX)) / (maxX - minX) +
           padding +
           nodeWidth / 2,
-        (height * (layout[node.symbol][1] - minY)) / (maxY - minY) +
+        (height * (layout[node.id][1] - minY)) / (maxY - minY) +
           padding +
           nodeHeight / 2,
       ];
@@ -125,9 +153,8 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
             }
 
             return (
-              <>
+              <Fragment key={`${src}-${dst}`}>
                 <line
-                  key={`${src}-${dst}`}
                   x1={effectiveCenters[src][0]}
                   y1={effectiveCenters[src][1]}
                   x2={effectiveCenters[dst][0]}
@@ -144,7 +171,7 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
                 >
                   {graph.edges.get(src)?.get(dst)?.relationTypes.join(", ")}
                 </text>
-              </>
+              </Fragment>
             );
           })
         )}
