@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Graph } from "../lib/extractConceptGraph";
-import { createBaseGraph, graphTnse } from "../lib/graphTsne";
+import { createBaseGraph, createLayout } from "../lib/createLayout";
 
 function stableStringify(obj: any) {
   if (Array.isArray(obj)) {
@@ -40,16 +40,18 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   // Compute layout of graph.
   const computeLayout = useCallback(
     (graph: Graph) =>
-      graphTnse({
+      createLayout({
         edges: createBaseGraph(graph),
-        iters: 1,
+        iters: 5000,
         exaggerationIters: 100,
         exaggerationScale: 4,
         l2: 1e-4,
-        learningRate: 10,
+        learningRate: 0.1,
         beta1: 0.9,
         beta2: 0.99,
         epsilon: 1e-6,
+        method: "gravity",
+        // method: "tsne",
       }),
     []
   );
@@ -71,11 +73,20 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   const height = 200;
 
   return (
-    <div style={{ width, height, position: "relative" }}>
-      {JSON.stringify(layout)}
-      {displayedGraph && isGraphUpdated(displayedGraph, graph) && (
+    <div
+      style={{ width: width + 50, height: height + 50, position: "relative" }}
+    >
+      {/* {JSON.stringify(layout)} */}
+      {/* {displayedGraph && isGraphUpdated(displayedGraph, graph) && (
         <button onClick={refresh}>Refresh</button>
-      )}
+      )} */}
+      {JSON.stringify({ minX, maxX, minY, maxY })}
+      <button
+        onClick={refresh}
+        style={{ zIndex: 1, position: "absolute", top: 5, left: 5 }}
+      >
+        Refresh
+      </button>
       {layout &&
         displayedGraph &&
         Array.from(displayedGraph.nodes.entries()).map(([symbol, node]) => (
@@ -85,6 +96,10 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
               position: "absolute",
               left: (width * (layout[symbol][0] - minX)) / (maxX - minX),
               top: (height * (layout[symbol][1] - minY)) / (maxY - minY),
+              width: 80,
+              height: 40,
+              border: "1px solid black",
+              padding: 2,
             }}
           >
             {node.title} (@{symbol})

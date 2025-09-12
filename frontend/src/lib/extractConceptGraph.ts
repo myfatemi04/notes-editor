@@ -20,7 +20,7 @@ function identifyOutwardEdges(body: RootContent[], wholeFileSource: string) {
   );
   // For example: "(uses @node1, @node2, @node3)" means relationType == "uses", firstTarget == "@node1", otherTargets == ", @node2, @node3"
   const linkRegex =
-    /\((?<relationType>[^)]+) (?<firstTarget>@\w+)(?<otherTargets>(,\s+@\w+)*)\)/g;
+    /\((?<relationType>[^)]+?) (?<firstTarget>@\w+)(?<otherTargets>(,\s+@\w+)*)\)/g;
 
   const edges = new Map<string, Edge>();
 
