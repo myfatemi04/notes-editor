@@ -5,6 +5,8 @@ import remarkMath from "remark-math";
 import Canvas, { CanvasHostContext } from "./Canvas";
 import { getEventListener } from "./pasteAsHTML";
 import { createFile, createProcessor, post } from "./rmd-modified";
+import extractConceptGraph from "../lib/extractConceptGraph";
+import GraphDisplay from "./GraphDisplay";
 
 const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
@@ -609,11 +611,7 @@ export default function BlockEditor({
     // Must be done asynchronously so that parent component finishes rendering first.
     setTimeout(() => {
       logEvent("normalize", { normalized });
-      // alert("normalizing to " + normalized);
       setContent(normalized);
-
-      const file = createFile({ children: normalized });
-      const tree = processor.parse(file);
     }, 0);
   }
 
@@ -627,6 +625,12 @@ export default function BlockEditor({
     }
     previousValuesRef.current.push(content);
   }, [content]);
+
+  // Extract concept graph.
+  const graph = useMemo(
+    () => extractConceptGraph(tree, content),
+    [tree, content]
+  );
 
   const undo = () => {
     if (previousValuesRef.current.length < 2) {
@@ -651,6 +655,7 @@ export default function BlockEditor({
 
   return (
     <div style={{ overflowY: "auto" }}>
+      <GraphDisplay graph={graph} />
       {children.map((child, i) => {
         const start = child.position!.start.offset!;
         const end =

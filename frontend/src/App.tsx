@@ -9,8 +9,6 @@ import {
 } from "./components/Modals";
 import { api, setAccessToken } from "./lib/api";
 import { FileTree } from "./lib/types";
-import Dag from "./components/Dag";
-import Canvas from "./components/Canvas";
 
 export default function App() {
   const [tree, setTree] = useState<FileTree | null>(null);
@@ -203,27 +201,6 @@ export default function App() {
           content={content}
           setContent={setContent}
           disabled={!currentPath || loading}
-          components={{
-            pre: ({ children, node }) => {
-              const code = (children.props.children ?? "").replace(/\\`/g, "`");
-              const classes = node.children[0].properties.className ?? [];
-
-              if (classes.length === 0) {
-                return <pre className="code-pre">{code}</pre>;
-              }
-
-              if (classes.length > 0) {
-                // Check if a DAG.
-                if (classes[0] === "language-dag") {
-                  return <Dag code={code} />;
-                } else if (classes[0] === "language-canvas") {
-                  return <Canvas />;
-                }
-
-                return <pre className={`code-pre ${classes[0]}`}>{code}</pre>;
-              }
-            },
-          }}
         />
       </main>
 
