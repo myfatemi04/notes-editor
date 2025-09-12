@@ -1,14 +1,18 @@
 import {
   forceCenter,
+  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   Simulation,
   SimulationLinkDatum,
   SimulationNodeDatum,
 } from "d3-force";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Graph } from "../lib/extractConceptGraph";
+import { createBaseGraph } from "../lib/createLayout";
 
 const WIDTH = 200;
 const HEIGHT = 200;
@@ -18,6 +22,8 @@ const PADDING = 60;
 const SVG_WIDTH = WIDTH + 2 * PADDING + NODE_WIDTH;
 const SVG_HEIGHT = HEIGHT + 2 * PADDING + NODE_HEIGHT;
 const MIN_SCALE = 0.25;
+const CHARGE_FORCE = 500;
+const COLLIDE_RADIUS = 100;
 
 function stableStringify(obj: any) {
   if (Array.isArray(obj)) {
@@ -35,6 +41,11 @@ function stableStringify(obj: any) {
       "}"
     );
   }
+  if (obj instanceof Set) {
+    const entryStrings = Array.from(obj).map(stableStringify);
+    entryStrings.sort();
+    return "Set{" + entryStrings.join(",") + "}";
+  }
   if (obj && typeof obj === "object") {
     const keys = Object.keys(obj).sort();
     return (
@@ -47,7 +58,10 @@ function stableStringify(obj: any) {
 }
 
 function isGraphUpdated(displayedGraph: Graph, currentGraph: Graph) {
-  return stableStringify(displayedGraph) !== stableStringify(currentGraph);
+  return (
+    stableStringify(createBaseGraph(displayedGraph)) !==
+    stableStringify(createBaseGraph(currentGraph))
+  );
 }
 
 export interface CustomNodeDatum extends SimulationNodeDatum {
@@ -141,6 +155,7 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
       !displayedGraphRef.current ||
       isGraphUpdated(displayedGraphRef.current, graph)
     ) {
+      displayedGraphRef.current = graph;
       const indices = {};
       const currentNodes = simulation.nodes();
       simulation.nodes(
@@ -155,19 +170,31 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
         graph.edges.entries()
       )
         .map(([src, dstMap]) =>
-          Array.from(dstMap.keys()).map((dst) => ({
-            source: indices[src],
-            target: indices[dst],
-          }))
+          Array.from(dstMap.keys())
+            .map((dst) => {
+              if (indices[src] === undefined || indices[dst] === undefined) {
+                return null;
+              }
+              return {
+                source: indices[src],
+                target: indices[dst],
+              };
+            })
+            .filter((x) => x !== null)
         )
         .flat();
 
-      simulation.force("charge", forceManyBody().strength(-500));
-      simulation.force("center", forceCenter());
-      simulation.force("link", forceLink(links));
-      simulation.alpha(1);
+      simulation
+        .force("charge", forceManyBody().strength(-CHARGE_FORCE))
+        .force("center", forceCenter())
+        .force("x", forceX())
+        .force("y", forceY())
+        .force("collide", forceCollide().radius(COLLIDE_RADIUS))
+        .force("link", forceLink(links));
+      simulation.alpha(1).alphaDecay(1 - Math.pow(0.001, 1 / 3000));
       simulation.restart();
     }
+    // stableStringify debounces graph updates for unrelated sections
   }, [graph, simulation]);
 
   useEffect(() => {
@@ -189,16 +216,7 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   const effectiveCenters = {};
   for (const node of simulation.nodes()) {
     if (node.id && layout && layout[node.id]) {
-      const denomX = maxX - minX || 1;
-      const denomY = maxY - minY || 1;
-      effectiveCenters[node.id] = [
-        (WIDTH * (layout[node.id][0] - minX)) / denomX +
-          PADDING +
-          NODE_WIDTH / 2,
-        (HEIGHT * (layout[node.id][1] - minY)) / denomY +
-          PADDING +
-          NODE_HEIGHT / 2,
-      ];
+      effectiveCenters[node.id] = layout[node.id];
     }
   }
 
@@ -221,8 +239,6 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
       setScale((scale) => {
         const oldScale = scale;
         const newScale = Math.max(MIN_SCALE, oldScale * (1 + e.deltaY * 0.001));
-
-        console.log({ oldScale, newScale, deltaY: e.deltaY });
 
         setOffsetX((prev) => cx - ((cx - prev) / oldScale) * newScale);
         setOffsetY((prev) => cy - ((cy - prev) / oldScale) * newScale);

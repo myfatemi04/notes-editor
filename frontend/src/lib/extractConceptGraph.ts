@@ -18,9 +18,10 @@ function identifyOutwardEdges(body: RootContent[], wholeFileSource: string) {
     body[0].position!.start.offset!,
     body.at(-1)!.position!.end.offset!
   );
+
   // For example: "(uses @node1, @node2, @node3)" means relationType == "uses", firstTarget == "@node1", otherTargets == ", @node2, @node3"
   const linkRegex =
-    /\((?<relationType>[^)]+?) (?<firstTarget>@\w+)(?<otherTargets>(,\s+@\w+)*)\)/g;
+    /\((?<relationType>[^)]+?) (?<firstTarget>@[\w\-]+)(?<otherTargets>(,\s+@[\w\-\:_]+)*)\)/g;
 
   const edges = new Map<string, Edge>();
 
