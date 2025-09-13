@@ -35,6 +35,7 @@ function BlockInternal({
   mergePrevious,
   split,
   file,
+  index,
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockType = content.startsWith("```")
@@ -540,7 +541,12 @@ const Block = memo(
   // Otherwise, only change if content changed.
   (prev, next) => {
     // console.log(prev.editing, next.editing, prev.content, next.content);
-    return prev.editing === next.editing && prev.content === next.content;
+    return (
+      prev.editing === next.editing &&
+      prev.content === next.content &&
+      // Shift effects
+      prev.index === next.index
+    );
   }
 );
 
@@ -764,7 +770,11 @@ export default function BlockEditor({
 
         return (
           <Block
-            key={contentKeyMap.get(blockContent) + ":" + blockContent}
+            key={
+              editingIndex === i
+                ? "edit-block"
+                : contentKeyMap.get(blockContent) + ":" + blockContent
+            }
             undo={undo}
             editing={editingIndex === i}
             ast={child}
@@ -792,6 +802,7 @@ export default function BlockEditor({
             mergePrevious={mergePrevious}
             split={split}
             file={file}
+            index={i}
           />
         );
       })}
