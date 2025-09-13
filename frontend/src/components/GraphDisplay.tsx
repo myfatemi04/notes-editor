@@ -200,7 +200,7 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
 
   useEffect(() => {
     simulation.on("tick", () => {
-      if (tickCounterRef.current === 250) {
+      if (tickCounterRef.current === 50) {
         const newLayout: Record<string, [number, number]> = {};
         simulation.nodes().forEach((node) => {
           if (node.id && node.x !== undefined && node.y !== undefined) {

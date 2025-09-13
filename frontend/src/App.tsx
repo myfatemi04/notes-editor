@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import BlockEditor from "./components/BlockEditor";
 import { FileTreeView } from "./components/FileTree";
 import {
@@ -42,15 +42,15 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  async function refreshTree(keepPath?: string) {
+  const refreshTree = useCallback(async () => {
     try {
       const data = await api.listFiles();
       setTree(data.files);
-      if (keepPath) {
+      if (currentPath) {
         // best-effort: if we still have the file open, keep it
         try {
-          const res = await api.getFile(keepPath);
-          setCurrentPath(keepPath);
+          const res = await api.getFile(currentPath);
+          setCurrentPath(currentPath);
           setContent(res.content ?? "");
           setSavedContent(res.content ?? "");
         } catch {
@@ -60,13 +60,13 @@ export default function App() {
     } catch (e: any) {
       setError(e.message || String(e));
     }
-  }
+  }, [currentPath]);
 
   useEffect(() => {
-    void refreshTree();
+    refreshTree();
   }, []);
 
-  async function openFile(path: string) {
+  const openFile = useCallback(async (path: string) => {
     setLoading(true);
     setError("");
     try {
@@ -79,9 +79,9 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function saveFile() {
+  const saveFile = useCallback(async () => {
     if (!currentPath || !dirty) return;
     setSaving(true);
     setError("");
@@ -98,7 +98,7 @@ export default function App() {
     } finally {
       setSaving(false);
     }
-  }
+  }, []);
 
   // Shortcuts
   useEffect(() => {
@@ -114,41 +114,55 @@ export default function App() {
 
   const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
 
+  const toggleSidebar = useCallback(() => {
+    setShowSidebar((s) => !s);
+  }, []);
+
+  const newFile = useCallback(() => {
+    setShowCreate(true);
+  }, []);
+
+  const renameFile = useCallback(() => {
+    setShowRename(true);
+  }, []);
+
+  const deleteFile = useCallback(() => {
+    setShowDelete(true);
+  }, []);
+
+  const authenticate = useCallback(() => {
+    setShowAuth(true);
+  }, []);
+
   return (
     <div className="app">
       <div className="header">
         <div className="brand">Notes</div>
         <div className="toolbar">
-          <button
-            className="button"
-            onClick={() => setShowSidebar(!showSidebar)}
-          >
+          <button className="button" onClick={toggleSidebar}>
             {showSidebar ? "Hide" : "Show"} Sidebar
           </button>
-          <button
-            className="button"
-            onClick={() => void refreshTree(currentPath)}
-          >
+          <button className="button" onClick={refreshTree}>
             Refresh
           </button>
-          <button className="button" onClick={() => setShowCreate(true)}>
+          <button className="button" onClick={newFile}>
             New File
           </button>
           <button
             className="button"
-            onClick={() => setShowRename(true)}
+            onClick={renameFile}
             disabled={!currentPath}
           >
             Rename
           </button>
           <button
             className="button danger"
-            onClick={() => setShowDelete(true)}
+            onClick={deleteFile}
             disabled={!currentPath}
           >
             Delete
           </button>
-          <button className="button" onClick={() => setShowAuth(true)}>
+          <button className="button" onClick={authenticate}>
             Authenticate
           </button>
           <button
@@ -233,7 +247,7 @@ export default function App() {
                 fail_if_exists: fail,
               });
               setShowCreate(false);
-              await refreshTree(path);
+              await refreshTree();
               setError("");
             } catch (e: any) {
               setError(e.message || String(e));
@@ -255,7 +269,8 @@ export default function App() {
                 fail_if_exists: fail,
               });
               setShowRename(false);
-              await refreshTree(dst);
+              setCurrentPath(dst);
+              await refreshTree();
               setError("");
             } catch (e: any) {
               setError(e.message || String(e));
