@@ -201,18 +201,14 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
 
   useEffect(() => {
     simulation.on("tick", () => {
-      if (tickCounterRef.current === 50) {
-        const newLayout: Record<string, [number, number]> = {};
-        simulation.nodes().forEach((node) => {
-          if (node.id && node.x !== undefined && node.y !== undefined) {
-            newLayout[node.id] = [node.x, node.y];
-          }
-        });
-        setLayout(newLayout);
-        tickCounterRef.current = 0;
-      } else {
-        tickCounterRef.current += 1;
-      }
+      const newLayout: Record<string, [number, number]> = {};
+      simulation.nodes().forEach((node) => {
+        if (node.id && node.x !== undefined && node.y !== undefined) {
+          newLayout[node.id] = [node.x, node.y];
+        }
+      });
+      setLayout(newLayout);
+      tickCounterRef.current = 0;
     });
   }, []);
 

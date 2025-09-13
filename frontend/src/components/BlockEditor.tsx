@@ -1,14 +1,12 @@
-import type { Root } from "mdast";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import type { VFile } from "vfile";
-import extractConceptGraph from "../lib/extractConceptGraph";
 import Canvas, { CanvasHostContext } from "./Canvas";
-import GraphDisplay from "./GraphDisplay";
 import { getEventListener } from "./pasteAsHTML";
 import { createFile, createProcessor, post } from "./rmd-modified";
+import extractConceptGraph from "../lib/extractConceptGraph";
+import GraphDisplay from "./GraphDisplay";
 
 const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
@@ -25,68 +23,19 @@ function logEvent(tag: string, metadata: Record<string, any> = {}) {
 
 function BlockInternal({
   editing,
-  index,
-  setEditingIndex,
-  // start,
-  // end,
-  nextInitialCursorPositionRef,
+  editMe,
+  editPrevious,
+  editNext,
   initialCursorPosition,
-  // astJson,
+  ast,
   content,
-  setContent: setContentUnwrapped,
+  setContent,
   mdopts,
   undo,
-  mergePrevious: mergePreviousUnwrapped,
-  split: splitUnwrapped,
-  fileRef,
-}: {
-  editing: boolean;
-  index: number;
-  setEditingIndex: (index: React.SetStateAction<number | null>) => void;
-  // start: number;
-  // end: number;
-  nextInitialCursorPositionRef: React.MutableRefObject<number>;
-  initialCursorPosition: number;
-  // astJson: string;
-  content: string;
-  setContent: (
-    i: number,
-    // start: number,
-    // end: number,
-    newBlockContentWithoutDelimiter: string
-  ) => void;
-  mdopts: {
-    allowedElements?: string[] | undefined;
-    allowElement?: ((element: any) => boolean) | undefined;
-    components?: Record<string, unknown> | undefined;
-    disallowedElements?: string[] | undefined;
-    skipHtml?: boolean | undefined;
-    unwrapDisallowed?: boolean | undefined;
-    urlTransform?: ((url: string) => string) | undefined;
-  };
-  undo: () => void;
-  mergePrevious: (
-    i: number,
-    // start: number,
-    // end: number,
-    blockContent: string
-  ) => void;
-  split: (
-    i: number,
-    // start: number,
-    // end: number,
-    blockContent: string,
-    at: number
-  ) => void;
-  fileRef: React.MutableRefObject<VFile>;
+  mergePrevious,
+  split,
+  file,
 }) {
-  // const ast = useMemo(() => JSON.parse(astJson) as RootContent, [astJson]);
-
-  const [file, ast] = useMemo(() => {
-    const file = createFile({ children: content });
-    const tree = processor.parse(file);
-    return [file, tree.children[0]];
-  }, [content]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockType = content.startsWith("```")
     ? "code"
@@ -111,44 +60,8 @@ function BlockInternal({
       ? // Math blocks are required to have '\n' after '$$' at start and before '$$' at end.
         content.slice("$$\n".length, content.length - "\n$$".length)
       : blockType === "canvas"
-      ? // @ts-expect-error ast.type === 'paragraph' is guaranteed, so will have a `children` attribute
-        ast.children[0].url.slice(CANVAS_URL_BASE.length)
+      ? ast.children[0].url.slice(CANVAS_URL_BASE.length)
       : content;
-
-  const editMe = useCallback(() => {
-    setEditingIndex(index);
-    nextInitialCursorPositionRef.current = 0;
-  }, [index, setEditingIndex]);
-
-  const editPrevious = useCallback(() => {
-    if (index > 0) {
-      setEditingIndex(index - 1);
-      nextInitialCursorPositionRef.current = -1;
-    }
-  }, [index, setEditingIndex]);
-
-  const editNext = useCallback(() => {
-    setEditingIndex(index + 1);
-    nextInitialCursorPositionRef.current = 0;
-  }, [index, setEditingIndex]);
-
-  const setContent = useCallback(
-    (newContent: string) => {
-      setContentUnwrapped(index, newContent);
-    },
-    [setContentUnwrapped, index]
-  );
-
-  const split = useCallback(
-    (at: number) => {
-      splitUnwrapped(index, content, at);
-    },
-    [splitUnwrapped, index, content]
-  );
-
-  const mergePrevious = useCallback(() => {
-    mergePreviousUnwrapped(index, content);
-  }, [mergePreviousUnwrapped, index, content]);
 
   const setFromTextareaContent = useCallback(
     (textareaContent: string) => {
@@ -181,7 +94,7 @@ function BlockInternal({
 
       logEvent("edit-block", { value: textareaContent });
     },
-    [blockType, setContent, content]
+    [blockType, setContent]
   );
 
   useEffect(() => {
@@ -470,7 +383,7 @@ function BlockInternal({
       textarea.removeEventListener("keydown", keyListener);
       textarea.removeEventListener("paste", pasteListener);
     };
-  }, [editing, undo, blockType, setContent, setFromTextareaContent, content]);
+  }, [editing, undo, blockType, setContent, setFromTextareaContent]);
 
   const onChange = useCallback(() => {
     const textarea = textareaRef.current!;
@@ -542,63 +455,6 @@ function BlockInternal({
 
   const maxWidth = !editing ? "600px" : "1200px";
 
-  const renderedContent = useMemo(
-    () =>
-      post(
-        processor.runSync({ type: "root", children: [ast] }, fileRef.current),
-        mdopts
-      ),
-    [content, mdopts]
-  );
-
-  /*
-  const monitoredState = {
-    editing,
-    index,
-    setEditingIndex,
-    nextInitialCursorPositionRef,
-    initialCursorPosition,
-    // astJson,
-    content,
-    setContentUnwrapped,
-    mdopts,
-    undo,
-    mergePreviousUnwrapped,
-    splitUnwrapped,
-    fileRef,
-    ast,
-    textareaRef,
-    blockType,
-    textareaContent,
-    editMe,
-    editPrevious,
-    editNext,
-    onChange,
-    split,
-    mergePrevious,
-    setContent,
-    setFromTextareaContent,
-    setCodeLang,
-    maxWidth,
-    renderedContent,
-  };
-  const prevStateRef = useRef<typeof monitoredState>(monitoredState);
-  for (const k of Object.keys(monitoredState).sort()) {
-    useEffect(() => {
-      console.log(
-        index,
-        "updated:",
-        k,
-        "from",
-        prevStateRef.current[k],
-        "to",
-        monitoredState[k]
-      );
-      prevStateRef.current[k] = monitoredState[k];
-    }, [monitoredState[k]]);
-  }
-  //*/
-
   return (
     <div
       style={{
@@ -667,7 +523,10 @@ function BlockInternal({
               paddingRight: "12px",
             }}
           >
-            {renderedContent}
+            {post(
+              processor.runSync({ type: "root", children: [ast] }, file),
+              mdopts
+            )}
           </div>
         </>
       )}
@@ -675,9 +534,17 @@ function BlockInternal({
   );
 }
 
-const Block = memo(BlockInternal);
+const Block = memo(
+  BlockInternal,
+  // Always change if editing.
+  // Otherwise, only change if content changed.
+  (prev, next) => {
+    // console.log(prev.editing, next.editing, prev.content, next.content);
+    return prev.editing === next.editing && prev.content === next.content;
+  }
+);
 
-function normalize(content: string, ast: Root) {
+function normalize(content, ast) {
   const children = ast.children.filter((child) => !!child.position);
   const blockTexts: string[] = [];
   for (let i = 0; i < children.length; i++) {
@@ -748,6 +615,7 @@ export default function BlockEditor({
   const nextInitialCursorPositionRef = useRef<number>(0);
 
   const normalized = useMemo(() => normalize(content, tree), [content, tree]);
+
   if (content !== normalized) {
     content = normalized;
     // Must be done asynchronously so that parent component finishes rendering first.
@@ -756,15 +624,6 @@ export default function BlockEditor({
       setContent(normalized);
     }, 0);
   }
-
-  // This ref is to enable callbacks that require `content` to be passed to child Blocks without forcing rerenders.
-  const contentRef = useRef(content);
-  const childrenRef = useRef(children);
-  const fileRef = useRef(file);
-
-  contentRef.current = content;
-  childrenRef.current = children;
-  fileRef.current = file;
 
   useEffect(() => {
     if (content == previousValuesRef.current.at(-1)) {
@@ -783,7 +642,7 @@ export default function BlockEditor({
     [tree, content]
   );
 
-  const undo = useCallback(() => {
+  const undo = () => {
     if (previousValuesRef.current.length < 2) {
       return;
     }
@@ -792,135 +651,19 @@ export default function BlockEditor({
     if (previous !== undefined) {
       setContent(previous);
     }
-  }, [setContent]);
+  };
 
-  const mergePrevious = useCallback(
-    (
-      i: number,
-      // start: number,
-      // end: number,
-      blockContent: string
-    ) => {
-      if (i === 0) {
-        logEvent("merge-previous-noop-at-start");
-        return;
-      }
-      const previousChild = childrenRef.current[i - 1];
-      const previousStart = previousChild.position!.start.offset!;
-      const previousEnd = childrenRef.current[i].position!.start.offset!;
-      const myEnd = childrenRef.current[i].position!.end.offset!;
-      const previousChildContentIncludingDelimiter = contentRef.current.slice(
-        previousStart,
-        previousEnd
-      );
+  const mdopts = {
+    allowedElements,
+    allowElement,
+    components,
+    disallowedElements,
+    skipHtml,
+    unwrapDisallowed,
+    urlTransform,
+  };
 
-      // Handles EMPTY_SPECIAL_STRING on nextInitialCursorPositionRef.
-      let previousChildContent = previousChildContentIncludingDelimiter.slice(
-        0,
-        -2
-      );
-      if (previousChildContent === EMPTY_SPECIAL_STRING) {
-        previousChildContent = "";
-      }
-
-      const previousChildContentUpdated =
-        previousChildContent +
-          (blockContent !== EMPTY_SPECIAL_STRING ? blockContent : "") ||
-        EMPTY_SPECIAL_STRING;
-
-      const beforePreviousBlock = contentRef.current.slice(0, previousStart);
-      const afterThisBlock = contentRef.current.slice(myEnd);
-      const newDocumentContent = `${beforePreviousBlock}${previousChildContentUpdated}\n\n${afterThisBlock}`;
-      setContent(newDocumentContent);
-      setEditingIndex(i - 1);
-      nextInitialCursorPositionRef.current = previousChildContent.length;
-    },
-    [setContent]
-  );
-
-  const split = useCallback(
-    (
-      i: number,
-      // start: number,
-      // end: number,
-      blockContent: string,
-      at: number
-    ) => {
-      // This function should only be called on text blocks.
-      const effectiveContent =
-        blockContent === EMPTY_SPECIAL_STRING ? "" : blockContent;
-      const before = effectiveContent.slice(0, at) || EMPTY_SPECIAL_STRING;
-      const after = effectiveContent.slice(at) || EMPTY_SPECIAL_STRING;
-
-      const start = childrenRef.current[i].position!.start.offset!;
-      const end =
-        i < childrenRef.current.length - 1
-          ? childrenRef.current[i + 1].position!.start.offset!
-          : contentRef.current.length + 1;
-
-      const beforeWithDelimiter = before + "\n\n";
-      const afterWithDelimiter = `${
-        after.trim() ? after : EMPTY_SPECIAL_STRING
-      }\n\n`;
-
-      const beforeThisBlock = contentRef.current.slice(0, start);
-      const afterThisBlock = contentRef.current.slice(end);
-      const newDocumentContent = `${beforeThisBlock}${beforeWithDelimiter}${afterWithDelimiter}${afterThisBlock}`;
-      setContent(newDocumentContent);
-      setEditingIndex(i + 1);
-      nextInitialCursorPositionRef.current = 0;
-    },
-    []
-  );
-
-  const setBlockContent = useCallback(
-    (
-      i: number,
-      // start: number,
-      // end: number,
-      newBlockContentWithoutDelimiter: string
-    ) => {
-      const start = childrenRef.current[i].position!.start.offset!;
-      const end =
-        i < childrenRef.current.length - 1
-          ? childrenRef.current[i + 1].position!.start.offset!
-          : contentRef.current.length + 1;
-
-      const beforeThisBlock = contentRef.current.slice(0, start);
-      const afterThisBlock = contentRef.current.slice(end);
-      const newBlockContent = newBlockContentWithoutDelimiter + "\n\n";
-      const newDocumentContent = `${beforeThisBlock}${newBlockContent}${afterThisBlock}`;
-      setContent(newDocumentContent);
-
-      if (newBlockContent.trim() === "" && i > 0) {
-        setEditingIndex(i - 1);
-        nextInitialCursorPositionRef.current = -1;
-      }
-    },
-    [setContent]
-  );
-
-  // Memo prevents unnecessary rerenders.
-  const mdopts = useMemo(
-    () => ({
-      allowedElements,
-      allowElement,
-      components,
-      disallowedElements,
-      skipHtml,
-      unwrapDisallowed,
-      urlTransform,
-    }),
-    [
-      allowedElements,
-      allowElement,
-      components,
-      disallowedElements,
-      skipHtml,
-      unwrapDisallowed,
-      urlTransform,
-    ]
-  );
+  const contentKeyMap = new Map();
 
   return (
     <div style={{ overflowY: "auto" }}>
@@ -947,24 +690,108 @@ export default function BlockEditor({
         const blockContentIncludingDelimiter = content.slice(start, end);
         const blockContent = blockContentIncludingDelimiter.slice(0, -2);
 
+        if (!contentKeyMap.has(blockContent)) {
+          contentKeyMap.set(blockContent, 0);
+        } else {
+          contentKeyMap.set(blockContent, contentKeyMap.get(blockContent) + 1);
+        }
+
+        const setBlockContent = (newBlockContentWithoutDelimiter: string) => {
+          const beforeThisBlock = content.slice(0, start);
+          const afterThisBlock = content.slice(end);
+          const newBlockContent = newBlockContentWithoutDelimiter + "\n\n";
+          const newDocumentContent = `${beforeThisBlock}${newBlockContent}${afterThisBlock}`;
+          setContent(newDocumentContent);
+
+          if (newBlockContent.trim() === "" && i > 0) {
+            setEditingIndex(i - 1);
+            nextInitialCursorPositionRef.current = -1;
+          }
+        };
+
+        const mergePrevious = () => {
+          if (i === 0) {
+            logEvent("merge-previous-noop-at-start");
+            return;
+          }
+          const previousChild = children[i - 1];
+          const previousStart = previousChild.position!.start.offset!;
+          const previousEnd = start;
+          const previousChildContentIncludingDelimiter = content.slice(
+            previousStart,
+            previousEnd
+          );
+
+          // Handles EMPTY_SPECIAL_STRING on nextInitialCursorPositionRef.
+          let previousChildContent =
+            previousChildContentIncludingDelimiter.slice(0, -2);
+          if (previousChildContent === EMPTY_SPECIAL_STRING) {
+            previousChildContent = "";
+          }
+
+          const previousChildContentUpdated =
+            previousChildContent +
+              (blockContent !== EMPTY_SPECIAL_STRING ? blockContent : "") ||
+            EMPTY_SPECIAL_STRING;
+
+          const beforePreviousBlock = content.slice(0, previousStart);
+          const afterThisBlock = content.slice(end);
+          const newDocumentContent = `${beforePreviousBlock}${previousChildContentUpdated}\n\n${afterThisBlock}`;
+          setContent(newDocumentContent);
+          setEditingIndex(i - 1);
+          nextInitialCursorPositionRef.current = previousChildContent.length;
+        };
+
+        const split = (at: number) => {
+          // This function should only be called on text blocks.
+          const effectiveContent =
+            blockContent === EMPTY_SPECIAL_STRING ? "" : blockContent;
+          const before = effectiveContent.slice(0, at) || EMPTY_SPECIAL_STRING;
+          const after = effectiveContent.slice(at) || EMPTY_SPECIAL_STRING;
+
+          const beforeWithDelimiter = before + "\n\n";
+          const afterWithDelimiter = `${
+            after.trim() ? after : EMPTY_SPECIAL_STRING
+          }\n\n`;
+
+          const beforeThisBlock = content.slice(0, start);
+          const afterThisBlock = content.slice(end);
+          const newDocumentContent = `${beforeThisBlock}${beforeWithDelimiter}${afterWithDelimiter}${afterThisBlock}`;
+          setContent(newDocumentContent);
+          setEditingIndex(i + 1);
+          nextInitialCursorPositionRef.current = 0;
+        };
+
         return (
           <Block
-            key={i}
-            index={i}
-            // start={start}
-            // end={end}
-            setEditingIndex={setEditingIndex}
-            nextInitialCursorPositionRef={nextInitialCursorPositionRef}
+            key={contentKeyMap.get(blockContent) + ":" + blockContent}
             undo={undo}
             editing={editingIndex === i}
-            // astJson={JSON.stringify(child)}
+            ast={child}
             mdopts={mdopts}
             setContent={setBlockContent}
+            editMe={() => {
+              console.log({ editMe: i });
+              setEditingIndex(i);
+              nextInitialCursorPositionRef.current = 0;
+            }}
+            editPrevious={() => {
+              if (i > 0) {
+                setEditingIndex(i - 1);
+                nextInitialCursorPositionRef.current = -1;
+              }
+            }}
+            editNext={() => {
+              if (i < children.length - 1) {
+                setEditingIndex(i + 1);
+                nextInitialCursorPositionRef.current = 0;
+              }
+            }}
             initialCursorPosition={nextInitialCursorPositionRef.current}
             content={blockContent}
             mergePrevious={mergePrevious}
             split={split}
-            fileRef={fileRef}
+            file={file}
           />
         );
       })}
