@@ -98,19 +98,19 @@ export default function App() {
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [currentPath, dirty, content]);
 
   // Shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void saveFile();
+        saveFile();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [content, currentPath, dirty]);
+  }, [saveFile]);
 
   const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
 
