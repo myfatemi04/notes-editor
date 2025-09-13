@@ -781,7 +781,6 @@ export default function BlockEditor({
             mdopts={mdopts}
             setContent={setBlockContent}
             editMe={() => {
-              console.log({ editMe: i });
               setEditingIndex(i);
               nextInitialCursorPositionRef.current = 0;
             }}

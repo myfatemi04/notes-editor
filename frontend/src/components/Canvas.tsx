@@ -24,7 +24,7 @@ export interface Stroke {
   touchIdentifier?: number;
 }
 
-const SCALE = 8;
+const RESOLUTION_FACTOR = 8;
 const LITTLE_ENDIAN = true;
 
 function renderTriplet(
@@ -35,20 +35,29 @@ function renderTriplet(
   r: number,
   g: number,
   b: number,
-  erase: boolean
+  erase: boolean,
+  offsetX: number = 0,
+  offsetY: number = 0,
+  scale: number = 1
 ) {
-  const cp1x = ((p0.x + p1.x) / 2) * SCALE;
-  const cp1y = ((p0.y + p1.y) / 2) * SCALE;
-  const cp2x = ((p1.x + p2.x) / 2) * SCALE;
-  const cp2y = ((p1.y + p2.y) / 2) * SCALE;
+  const cp1x = ((p0.x + p1.x) / 2 - offsetX) * RESOLUTION_FACTOR * scale;
+  const cp1y = ((p0.y + p1.y) / 2 - offsetY) * RESOLUTION_FACTOR * scale;
+  const cp2x = ((p1.x + p2.x) / 2 - offsetX) * RESOLUTION_FACTOR * scale;
+  const cp2y = ((p1.y + p2.y) / 2 - offsetY) * RESOLUTION_FACTOR * scale;
 
-  context.lineWidth = (p0.thickness + p1.thickness + p2.thickness) / 3;
+  context.lineWidth =
+    ((p0.thickness + p1.thickness + p2.thickness) / 3) * scale;
   context.lineCap = "round";
   context.strokeStyle = erase ? "white" : `rgb(${r}, ${g}, ${b})`;
 
   context.beginPath();
   context.moveTo(cp1x, cp1y);
-  context.quadraticCurveTo(p1.x * SCALE, p1.y * SCALE, cp2x, cp2y);
+  context.quadraticCurveTo(
+    (p1.x - offsetX) * RESOLUTION_FACTOR * scale,
+    (p1.y - offsetY) * RESOLUTION_FACTOR * scale,
+    cp2x,
+    cp2y
+  );
   context.stroke();
 }
 
@@ -254,14 +263,27 @@ export default function Canvas() {
       return;
     }
 
+    if (b64) {
+      const strokes = deserialize(b64);
+      setStrokes(strokes);
+      render(strokes);
+    }
+
+    if (!editing) {
+      return;
+    }
+
     const translateCoordinates = (clientX: number, clientY: number) => {
       const boundingRect = canvas.getBoundingClientRect();
       const x0 = boundingRect.left;
       const y0 = boundingRect.top;
 
-      const x = (((clientX - x0) / boundingRect.width) * canvas.width) / SCALE;
+      const x =
+        (((clientX - x0) / boundingRect.width) * canvas.width) /
+        RESOLUTION_FACTOR;
       const y =
-        (((clientY - y0) / boundingRect.height) * canvas.height) / SCALE;
+        (((clientY - y0) / boundingRect.height) * canvas.height) /
+        RESOLUTION_FACTOR;
       return { x, y };
     };
 
@@ -293,8 +315,8 @@ export default function Canvas() {
       context.fillStyle = erase ? "white" : `rgb(${r}, ${g}, ${b})`;
       context.beginPath();
       context.ellipse(
-        point.x * SCALE,
-        point.y * SCALE,
+        point.x * RESOLUTION_FACTOR,
+        point.y * RESOLUTION_FACTOR,
         point.thickness / 2,
         point.thickness / 2,
         0,
@@ -394,12 +416,6 @@ export default function Canvas() {
     canvas.addEventListener("mouseup", onMouseUp);
     canvas.addEventListener("mouseleave", onMouseUp);
 
-    if (b64) {
-      const strokes = deserialize(b64);
-      setStrokes(strokes);
-      render(strokes);
-    }
-
     return () => {
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchend", onTouchEnd);
@@ -409,7 +425,7 @@ export default function Canvas() {
       canvas.removeEventListener("mouseup", onMouseUp);
       canvas.removeEventListener("mouseleave", onMouseUp);
     };
-  }, [colorPaletteIndex, b64, setB64]);
+  }, [colorPaletteIndex, b64, setB64, editing]);
 
   const render = useCallback(
     (strokes: Stroke[]) => {
@@ -423,6 +439,66 @@ export default function Canvas() {
       context.fillStyle = "white";
       context.fillRect(0, 0, canvas.width, canvas.height);
 
+      let offsetX = 0;
+      let offsetY = 0;
+      let scale = 1;
+
+      if (!editing) {
+        // Scale strokes to canvas size, if not in editing mode. Maintain aspect ratio. Have maximum scale-up of 4x.
+        let minX = canvas.width;
+        let minY = canvas.height;
+        let maxX = 0;
+        let maxY = 0;
+        for (const stroke of strokes) {
+          if (stroke.erase) {
+            continue;
+          }
+          for (const point of stroke.points) {
+            let lowerX = point.x - point.thickness / 2;
+            let upperX = point.x + point.thickness / 2;
+            let lowerY = point.y - point.thickness / 2;
+            let upperY = point.y + point.thickness / 2;
+            if (lowerX < minX) {
+              minX = lowerX;
+            }
+            if (upperX > maxX) {
+              maxX = upperX;
+            }
+            if (lowerY < minY) {
+              minY = lowerY;
+            }
+            if (upperY > maxY) {
+              maxY = upperY;
+            }
+          }
+        }
+
+        const pad = 20;
+        const unscaledCanvasWidth = canvas.width / RESOLUTION_FACTOR;
+        const unscaledCanvasHeight = canvas.height / RESOLUTION_FACTOR;
+        minX = Math.max(minX - pad, 0);
+        minY = Math.max(minY - pad, 0);
+        maxX = Math.min(maxX + pad, unscaledCanvasWidth);
+        maxY = Math.min(maxY + pad, unscaledCanvasHeight);
+        const drawnWidth = maxX - minX;
+        const drawnHeight = maxY - minY;
+
+        if (
+          drawnWidth / drawnHeight >
+          unscaledCanvasWidth / unscaledCanvasHeight
+        ) {
+          scale = unscaledCanvasWidth / drawnWidth;
+          offsetX = minX;
+          offsetY = minY;
+        } else {
+          scale = unscaledCanvasHeight / drawnHeight;
+          offsetX = minX;
+          offsetY = minY;
+        }
+
+        scale = Math.min(scale, 4);
+      }
+
       for (const stroke of strokes) {
         for (let i = 0; i < stroke.points.length - 2; i++) {
           const [p0, p1, p2] = stroke.points.slice(i, i + 3);
@@ -434,7 +510,10 @@ export default function Canvas() {
             stroke.r,
             stroke.g,
             stroke.b,
-            stroke.erase
+            stroke.erase,
+            offsetX,
+            offsetY,
+            scale
           );
         }
       }
@@ -513,8 +592,8 @@ export default function Canvas() {
           aspectRatio: "4 / 3",
           width: "calc(max(600px, calc(100% - 24px)))",
         }}
-        width={800 * SCALE}
-        height={600 * SCALE}
+        width={800 * RESOLUTION_FACTOR}
+        height={600 * RESOLUTION_FACTOR}
       />
       {strokes.length}
       {fakeConsole}
