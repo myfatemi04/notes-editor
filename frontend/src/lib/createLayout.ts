@@ -24,7 +24,6 @@ function randn() {
 
 /** Creates a symmetric graph with no other metadata for t-SNE. */
 export function createBaseGraph(graph: Graph) {
-  console.log(graph);
   const edges: Record<string, Set<string>> = {};
   for (const [src, dstMap] of graph.edges.entries()) {
     if (!(src in edges)) {

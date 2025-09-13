@@ -149,6 +149,7 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   const [layout, setLayout] = useState<Record<string, [number, number]>>({});
   const displayedGraphRef = useRef<Graph>();
   const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
+  const tickCounterRef = useRef<number>(0);
 
   useEffect(() => {
     if (
@@ -199,13 +200,18 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
 
   useEffect(() => {
     simulation.on("tick", () => {
-      const newLayout: Record<string, [number, number]> = {};
-      simulation.nodes().forEach((node) => {
-        if (node.id && node.x !== undefined && node.y !== undefined) {
-          newLayout[node.id] = [node.x, node.y];
-        }
-      });
-      setLayout(newLayout);
+      if (tickCounterRef.current === 250) {
+        const newLayout: Record<string, [number, number]> = {};
+        simulation.nodes().forEach((node) => {
+          if (node.id && node.x !== undefined && node.y !== undefined) {
+            newLayout[node.id] = [node.x, node.y];
+          }
+        });
+        setLayout(newLayout);
+        tickCounterRef.current = 0;
+      } else {
+        tickCounterRef.current += 1;
+      }
     });
   }, []);
 
