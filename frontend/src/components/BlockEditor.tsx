@@ -1,5 +1,5 @@
-import type { Root, RootContent } from "mdast";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Root } from "mdast";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -23,7 +23,7 @@ function logEvent(tag: string, metadata: Record<string, any> = {}) {
   console.log(`event: ${tag}`, metadata);
 }
 
-function Block({
+function BlockInternal({
   editing,
   index,
   setEditingIndex,
@@ -31,7 +31,7 @@ function Block({
   // end,
   nextInitialCursorPositionRef,
   initialCursorPosition,
-  astJson,
+  // astJson,
   content,
   setContent: setContentUnwrapped,
   mdopts,
@@ -47,7 +47,7 @@ function Block({
   // end: number;
   nextInitialCursorPositionRef: React.MutableRefObject<number>;
   initialCursorPosition: number;
-  astJson: string;
+  // astJson: string;
   content: string;
   setContent: (
     i: number,
@@ -80,7 +80,13 @@ function Block({
   ) => void;
   fileRef: React.MutableRefObject<VFile>;
 }) {
-  const ast = useMemo(() => JSON.parse(astJson) as RootContent, [astJson]);
+  // const ast = useMemo(() => JSON.parse(astJson) as RootContent, [astJson]);
+
+  const [file, ast] = useMemo(() => {
+    const file = createFile({ children: content });
+    const tree = processor.parse(file);
+    return [file, tree.children[0]];
+  }, [content]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockType = content.startsWith("```")
     ? "code"
@@ -552,7 +558,7 @@ function Block({
     setEditingIndex,
     nextInitialCursorPositionRef,
     initialCursorPosition,
-    astJson,
+    // astJson,
     content,
     setContentUnwrapped,
     mdopts,
@@ -591,7 +597,7 @@ function Block({
       prevStateRef.current[k] = monitoredState[k];
     }, [monitoredState[k]]);
   }
-  */
+  //*/
 
   return (
     <div
@@ -668,6 +674,8 @@ function Block({
     </div>
   );
 }
+
+const Block = memo(BlockInternal);
 
 function normalize(content: string, ast: Root) {
   const children = ast.children.filter((child) => !!child.position);
@@ -949,7 +957,7 @@ export default function BlockEditor({
             nextInitialCursorPositionRef={nextInitialCursorPositionRef}
             undo={undo}
             editing={editingIndex === i}
-            astJson={JSON.stringify(child)}
+            // astJson={JSON.stringify(child)}
             mdopts={mdopts}
             setContent={setBlockContent}
             initialCursorPosition={nextInitialCursorPositionRef.current}

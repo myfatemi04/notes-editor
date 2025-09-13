@@ -154,7 +154,8 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
   useEffect(() => {
     if (
       !displayedGraphRef.current ||
-      isGraphUpdated(displayedGraphRef.current, graph)
+      (isGraphUpdated(displayedGraphRef.current, graph) &&
+        (displayedGraphRef.current.nodes.size > 0 || graph.nodes.size > 0))
     ) {
       displayedGraphRef.current = graph;
       const indices = {};
@@ -262,6 +263,10 @@ export default function GraphDisplay({ graph }: { graph: Graph }) {
       };
     }
   }, []);
+
+  if (Object.keys(layout).length === 0) {
+    return;
+  }
 
   return (
     <svg

@@ -1,17 +1,17 @@
-import React from "react";
+import React, { memo } from "react";
 import { FileTree } from "../lib/types";
 
 type NodeProps = {
   name: string;
   subtree: FileTree | null;
-  prefix: string[];
+  prefix: string;
   onOpen: (path: string) => void;
 };
 
 const TreeNode: React.FC<NodeProps> = ({ name, subtree, prefix, onOpen }) => {
   const [open, setOpen] = React.useState<boolean>(false);
   const isDir = subtree !== null;
-  const fullPath = [...prefix, name].join("/");
+  const fullPath = prefix ? `${prefix}/${name}` : name;
 
   return (
     <li>
@@ -43,7 +43,7 @@ const TreeNode: React.FC<NodeProps> = ({ name, subtree, prefix, onOpen }) => {
                 key={child}
                 name={child}
                 subtree={childTree}
-                prefix={[...prefix, name]}
+                prefix={fullPath}
                 onOpen={onOpen}
               />
             ))}
@@ -53,23 +53,23 @@ const TreeNode: React.FC<NodeProps> = ({ name, subtree, prefix, onOpen }) => {
   );
 };
 
-export const FileTreeView: React.FC<{
+const FileTreeViewInternal: React.FC<{
   tree: FileTree;
   onOpen: (path: string) => void;
-}> = ({ tree, onOpen }) => {
-  return (
-    <div className="tree">
-      <ul>
-        {Object.entries(tree).map(([name, subtree]) => (
-          <TreeNode
-            key={name}
-            name={name}
-            subtree={subtree}
-            prefix={[]}
-            onOpen={onOpen}
-          />
-        ))}
-      </ul>
-    </div>
-  );
-};
+}> = ({ tree, onOpen }) => (
+  <div className="tree">
+    <ul>
+      {Object.entries(tree).map(([name, subtree]) => (
+        <TreeNode
+          key={name}
+          name={name}
+          subtree={subtree}
+          onOpen={onOpen}
+          prefix=""
+        />
+      ))}
+    </ul>
+  </div>
+);
+
+export const FileTreeView = memo(FileTreeViewInternal);
