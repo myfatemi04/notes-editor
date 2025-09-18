@@ -4,14 +4,8 @@ import traceback
 from typing import Any, Dict, Optional
 
 from remote import Remote
-from secret import (
-    AUTHOR_EMAIL,
-    AUTHOR_NAME,
-    GITHUB_TOKEN,
-    ACCESS_TOKEN,
-    GIT_REF,
-    REMOTE_URI,
-)
+from secret import ACCESS_TOKEN_MAP, AccessTokenInfo
+
 
 # CORS settings
 CORS_HEADERS = {
@@ -22,7 +16,7 @@ CORS_HEADERS = {
 }
 
 # Cache the Remote instance across Lambda invocations
-_REMOTE_SINGLETON: Optional[Remote] = None
+_REMOTE_SINGLETONS: dict[str, Remote] = {}
 
 
 def _json_response(
@@ -44,47 +38,49 @@ def _bad_request(
     return _json_response(400, payload)
 
 
-def _get_remote() -> Remote:
+def _get_remote(token_info: AccessTokenInfo) -> Remote:
     """
-    Returns a cached Remote instance, constructing it if needed.
+    Returns a cached Remote instance, constructing it if needed. Keys for Remotes are given by access tokens. Therefore, access tokens must be unique to each ghp/remote combination.
     Uses a GitHub token resolved from env/Secrets Manager/SSM.
     """
-    global _REMOTE_SINGLETON
-    if _REMOTE_SINGLETON is not None:
-        return _REMOTE_SINGLETON
 
-    if not REMOTE_URI:
-        raise RuntimeError("REMOTE_URI environment variable is not set")
+    if not token_info["remote_uri"]:
+        raise RuntimeError("REMOTE_URI token variable is not set")
 
-    _REMOTE_SINGLETON = Remote(
-        REMOTE_URI,
-        ref=GIT_REF,
-        token=GITHUB_TOKEN,
-        author_name=AUTHOR_NAME,
-        author_email=AUTHOR_EMAIL,
-    )
+    if token_info["token"] not in _REMOTE_SINGLETONS:
+        _REMOTE_SINGLETONS[token_info["token"]] = Remote(
+            token_info["remote_uri"],
+            ref=token_info["git_ref"],
+            token=token_info["github_token"],
+            author_name=token_info["author_name"],
+            author_email=token_info["author_email"],
+        )
 
-    return _REMOTE_SINGLETON
+    return _REMOTE_SINGLETONS[token_info["token"]]
 
 
-def _handle_get_files() -> Dict[str, Any]:
-    r = _get_remote()
+def _handle_get_files(token_info: AccessTokenInfo) -> Dict[str, Any]:
+    r = _get_remote(token_info)
     files = r.get_files()
-    return _json_response(200, {"ref": GIT_REF, "files": files})
+    return _json_response(200, {"ref": token_info["git_ref"], "files": files})
 
 
-def _handle_get_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_get_file_content(
+    event: Dict[str, Any], token_info: AccessTokenInfo
+) -> Dict[str, Any]:
     qs = event.get("queryStringParameters") or {}
     path = qs.get("path")
     if not path:
         return _bad_request("Missing required query parameter: path")
 
-    r = _get_remote()
+    r = _get_remote(token_info)
     try:
         content = r.get_file_content(path)
     except KeyError as e:
         return _json_response(404, {"error": traceback.format_exc(), "path": path})
-    return _json_response(200, {"ref": GIT_REF, "path": path, "content": content})
+    return _json_response(
+        200, {"ref": token_info["git_ref"], "path": path, "content": content}
+    )
 
 
 def _parse_json_body(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,7 +101,9 @@ def _parse_json_body(event: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
 
-def _handle_update_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_update_file_content(
+    event: Dict[str, Any], token_info: AccessTokenInfo
+) -> Dict[str, Any]:
     data = _parse_json_body(event)
     path = data.get("path")
     new_content = data.get("content")
@@ -114,7 +112,7 @@ def _handle_update_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
     if not path or new_content is None:
         return _bad_request("JSON body must include 'path' and 'content'")
 
-    r = _get_remote()
+    r = _get_remote(token_info)
     try:
         new_sha = r.update_file_content(
             path,
@@ -134,10 +132,14 @@ def _handle_update_file_content(event: Dict[str, Any]) -> Dict[str, Any]:
             500, {"error": "Update failed", "detail": traceback.format_exc()}
         )
 
-    return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
+    return _json_response(
+        200, {"ref": token_info["git_ref"], "path": path, "commit": new_sha}
+    )
 
 
-def _handle_create_file(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_create_file(
+    event: Dict[str, Any], token_info: AccessTokenInfo
+) -> Dict[str, Any]:
     data = _parse_json_body(event)
     path = data.get("path")
     content = data.get("content", "")
@@ -145,7 +147,7 @@ def _handle_create_file(event: Dict[str, Any]) -> Dict[str, Any]:
     fail_if_exists = bool(data.get("fail_if_exists", True))
     if not path:
         return _bad_request("JSON body must include 'path'")
-    r = _get_remote()
+    r = _get_remote(token_info)
     try:
         new_sha = r.update_file_content(
             path,
@@ -162,10 +164,14 @@ def _handle_create_file(event: Dict[str, Any]) -> Dict[str, Any]:
         return _json_response(
             500, {"error": "Create failed", "detail": traceback.format_exc()}
         )
-    return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
+    return _json_response(
+        200, {"ref": token_info["git_ref"], "path": path, "commit": new_sha}
+    )
 
 
-def _handle_delete_file(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_delete_file(
+    event: Dict[str, Any], token_info: AccessTokenInfo
+) -> Dict[str, Any]:
     qs = event.get("queryStringParameters") or {}
     path = qs.get("path")
     if not path:
@@ -174,7 +180,7 @@ def _handle_delete_file(event: Dict[str, Any]) -> Dict[str, Any]:
         path = data.get("path")
     if not path:
         return _bad_request("Missing 'path' (query param or JSON body)")
-    r = _get_remote()
+    r = _get_remote(token_info)
     try:
         new_sha = r.delete_file(path, push=True)
     except KeyError as e:
@@ -184,10 +190,14 @@ def _handle_delete_file(event: Dict[str, Any]) -> Dict[str, Any]:
         return _json_response(
             500, {"error": "Delete failed", "detail": traceback.format_exc()}
         )
-    return _json_response(200, {"ref": GIT_REF, "path": path, "commit": new_sha})
+    return _json_response(
+        200, {"ref": token_info["git_ref"], "path": path, "commit": new_sha}
+    )
 
 
-def _handle_rename_file(event: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_rename_file(
+    event: Dict[str, Any], token_info: AccessTokenInfo
+) -> Dict[str, Any]:
     data = _parse_json_body(event)
     src = data.get("src") or data.get("source") or data.get("from")
     dst = data.get("dst") or data.get("destination") or data.get("to")
@@ -197,7 +207,7 @@ def _handle_rename_file(event: Dict[str, Any]) -> Dict[str, Any]:
     if not src or not dst:
         return _bad_request("JSON body must include 'src' and 'dst'")
 
-    r = _get_remote()
+    r = _get_remote(token_info)
     try:
         new_sha = r.rename_file(
             src, dst, message=message, push=True, fail_if_exists=fail_if_exists
@@ -213,7 +223,7 @@ def _handle_rename_file(event: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return _json_response(
-        200, {"ref": GIT_REF, "src": src, "dst": dst, "commit": new_sha}
+        200, {"ref": token_info["git_ref"], "src": src, "dst": dst, "commit": new_sha}
     )
 
 
@@ -243,36 +253,41 @@ def handler(event, context) -> Dict[str, Any]:
             return _json_response(204, {})
 
         auth_header = event.get("headers", {}).get("Authorization")
-        if auth_header != f"Bearer {ACCESS_TOKEN}":
+        if not auth_header or not auth_header.startswith("Bearer "):
             return _json_response(401, {"error": "Unauthorized"})
+
+        access_token = auth_header[len("Bearer ") :].strip()
+        token_info = ACCESS_TOKEN_MAP.get(access_token)
+        if not token_info:
+            return _json_response(403, {"error": "Forbidden"})
 
         # Routing
         if http_method == "GET" and path == "/health":
-            return _json_response(200, {"status": "ok", "ref": GIT_REF})
+            return _json_response(200, {"status": "ok", "ref": token_info["git_ref"]})
 
         if http_method == "GET" and path == "/files":
-            return _handle_get_files()
+            return _handle_get_files(token_info)
 
         if http_method == "GET" and path == "/file":
-            return _handle_get_file_content(event)
+            return _handle_get_file_content(event, token_info)
 
         if http_method in ("PUT", "POST") and path == "/file":
-            return _handle_update_file_content(event)
+            return _handle_update_file_content(event, token_info)
 
         # Create & delete routes
         if http_method == "POST" and path == "/file/create":
-            return _handle_create_file(event)
+            return _handle_create_file(event, token_info)
 
         if http_method == "DELETE" and path == "/file":
-            return _handle_delete_file(event)
+            return _handle_delete_file(event, token_info)
 
         # Optional: POST /file/delete for clients without DELETE support
         if http_method == "POST" and path == "/file/delete":
-            return _handle_delete_file(event)
+            return _handle_delete_file(event, token_info)
 
         # Rename route
         if http_method == "POST" and path == "/file/rename":
-            return _handle_rename_file(event)
+            return _handle_rename_file(event, token_info)
 
         return _json_response(
             404, {"error": "Not found", "method": http_method, "path": path}
