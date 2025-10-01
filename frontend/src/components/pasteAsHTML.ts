@@ -110,7 +110,7 @@ function normalizeHtml(html: string) {
 }
 
 // Attach to all textareas with class "md-paste"
-export function getEventListener() {
+export default function getPasteListener() {
   function onPaste(e: ClipboardEvent) {
     const target = e.target as HTMLTextAreaElement;
 
