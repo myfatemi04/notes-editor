@@ -1,7 +1,9 @@
+import base64
 import tempfile
 from typing import Optional, cast
 
 import pygit2
+from typedefs import FileUpdate
 
 GITMODE_TREE = pygit2.GIT_FILEMODE_TREE  # type: ignore
 GITMODE_FILE = pygit2.GIT_FILEMODE_BLOB  # type: ignore
@@ -134,18 +136,6 @@ class Remote:
         builder.insert(parts[0], new_tree_oid, GITMODE_TREE)
         return builder.write()
 
-    # -----------------------
-    # Public API
-    # -----------------------
-
-    def get_files(self) -> dict[str, Optional[dict]]:
-        """Return a nested dict representing the file tree at the tip of self.ref."""
-        commit = self._get_tip()
-        return self._tree_to_dict(commit.tree)
-
-    def _push(self):
-        self.remote.push([self.ref], callbacks=self.callbacks)
-
     def _get_file_blob(self, tree: pygit2.Tree, path: str) -> pygit2.Blob:
         node = tree
         parts = [p for p in path.split("/") if p]
@@ -163,45 +153,56 @@ class Remote:
 
         return cast(pygit2.Blob, node)
 
-    def get_file_content(self, path: str) -> str:
+    def _push(self):
+        self.remote.push([self.ref], callbacks=self.callbacks)
+
+    # -----------------------
+    # Public API
+    # -----------------------
+
+    def ls(self) -> dict[str, Optional[dict]]:
+        """Return a nested dict representing the file tree at the tip of self.ref."""
+        commit = self._get_tip()
+        return self._tree_to_dict(commit.tree)
+
+    def get(self, path: str) -> bytes:
         """
         Return file content at given path in the tip commit.
         Raises KeyError if the path is missing or is a directory.
         """
         commit = self._get_tip()
         tree = commit.tree
-        return self._get_file_blob(tree, path).data.decode("utf-8", errors="replace")
+        return self._get_file_blob(tree, path).data
 
-    def update_file_content(
-        self,
-        path: str,
-        content: str,
-        fail_if_exists: bool,
-        fail_if_not_exists: bool,
-        message: Optional[str] = None,
-        push: bool = True,
+    def update(
+        self, updates: list[FileUpdate], message: Optional[str] = None, push=True
     ) -> str:
         """
         Create a new commit that updates/creates `path` with `new_content`, then (optionally) push.
-
-        Returns the new commit SHA.
         """
         commit = self._get_tip()
         base_tree = commit.tree
 
-        blob_oid = self.repo.create_blob(content.encode("utf-8"))
-        new_tree_oid = self._deep_update(
-            base_tree,
-            parts=[p for p in path.split("/") if p],
-            update={
-                "type": "insert",
-                "blob_oid": blob_oid,
-                "mode": GITMODE_FILE,
-                "fail_if_exists": fail_if_exists,
-                "fail_if_not_exists": fail_if_not_exists,
-            },
-        )
-        commit_msg = message or f"Update {path}"
+        for update in updates:
+            b64 = update.b64
+            content = update.content.encode("utf-8")
+            blob = content if not b64 else base64.b64decode(content)
+            blob_oid = self.repo.create_blob(blob)
+            new_tree_oid = self._deep_update(
+                base_tree,
+                parts=[p for p in update.path.split("/") if p],
+                update={
+                    "type": "insert",
+                    "blob_oid": blob_oid,
+                    "mode": GITMODE_FILE,
+                    "fail_if_exists": update.fail_if_exists,
+                    "fail_if_not_exists": update.fail_if_not_exists,
+                },
+            )
+            base_tree = cast(pygit2.Tree, self.repo[new_tree_oid])
+
+        paths = ", ".join(update.path for update in updates)
+        commit_msg = message or f"Update {paths}"
         new_commit_oid = self._new_commit(
             commit_msg, commit, cast(pygit2.Tree, self.repo[new_tree_oid])
         )
@@ -210,12 +211,7 @@ class Remote:
 
         return str(new_commit_oid)
 
-    def delete_file(
-        self,
-        path: str,
-        message: Optional[str] = None,
-        push: bool = True,
-    ) -> str:
+    def delete(self, path: str, message: Optional[str] = None, push=True) -> str:
         """
         Delete the file at `path`. Raises KeyError if not found or if path is a directory.
         Returns the new commit SHA.
@@ -236,7 +232,7 @@ class Remote:
 
         return str(new_commit_oid)
 
-    def rename_file(
+    def move(
         self,
         src_path: str,
         dst_path: str,
@@ -244,16 +240,6 @@ class Remote:
         push: bool = True,
         fail_if_exists: bool = True,
     ) -> str:
-        """
-        Rename (move) a file from `src_path` to `dst_path`.
-        - Preserves the blob and file mode (e.g., executable bit).
-        - Creates intermediate directories for the destination path.
-        - If `fail_if_exists` and destination exists, raises KeyError.
-        Returns the new commit SHA.
-        """
-        if not src_path or not dst_path:
-            raise KeyError("src_path and dst_path are required")
-
         commit = self._get_tip()
         base_tree = commit.tree
         new_tree_oid = self._deep_update(
@@ -276,29 +262,7 @@ class Remote:
             commit,
             cast(pygit2.Tree, self.repo[new_tree_oid]),
         )
-
         if push:
             self._push()
 
         return str(new_commit_oid)
-
-
-if __name__ == "__main__":
-    # DEMO (read-only unless you keep `push=True` and have permission):
-    uri = "https://github.com/libgit2/pygit2.git"
-    r = Remote(uri, ref="refs/heads/master")
-
-    # 1) list files (nested dict)
-    files = r.get_files()
-    print(list(files.keys())[:10])
-
-    # 2) Read a nested file
-    try:
-        content = r.get_file_content("README.md")
-        print(content.splitlines()[0])
-    except KeyError as e:
-        print(e)
-
-    # 3) Update or create a deeply nested file (CAUTION: pushes if allowed!)
-    # new_sha = r.update_file_content("docs/examples/hello.txt", "Hello, world!\n", push=False)
-    # print("New commit:", new_sha)
