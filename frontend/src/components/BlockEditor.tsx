@@ -61,7 +61,7 @@ export default function BlockEditor({
     if (previousValuesRef.current.length > 100) {
       previousValuesRef.current.shift();
     }
-    setContent(blocks.join("\n\n"));
+    setContent(blocks.map((b) => b.trim()).join("\n\n") + "\n\n");
   }, [blocks]);
 
   const undo = useCallback(() => {
