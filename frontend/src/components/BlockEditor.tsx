@@ -5,7 +5,7 @@ import remarkMath from "remark-math";
 import Block, { Update } from "./Block";
 import { createFile, createProcessor } from "./rmd-modified";
 
-const processor = createProcessor({
+export const processor = createProcessor({
   remarkPlugins: [remarkMath, remarkGfm],
   rehypePlugins: [rehypeKatex],
 });
@@ -33,7 +33,7 @@ export default function BlockEditor({
 }) {
   const [blocks, setBlocks] = useState<string[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const previousValuesRef = useRef<string[]>([content]);
+  const previousValuesRef = useRef<string[][]>([]);
   const cursorRef = useRef<number>(0);
 
   const parse = useCallback((content: string) => {
@@ -56,16 +56,24 @@ export default function BlockEditor({
     setBlocks(parse(content));
   }, []);
 
-  const undo = () => {
+  useEffect(() => {
+    previousValuesRef.current.push(blocks);
+    if (previousValuesRef.current.length > 100) {
+      previousValuesRef.current.shift();
+    }
+    setContent(blocks.join("\n\n"));
+  }, [blocks]);
+
+  const undo = useCallback(() => {
     if (previousValuesRef.current.length < 2) {
       return;
     }
     previousValuesRef.current.pop();
     const previous = previousValuesRef.current.at(-1);
     if (previous !== undefined) {
-      setContent(previous);
+      setBlocks(previous);
     }
-  };
+  }, []);
 
   const mdopts = {
     allowedElements,
@@ -106,12 +114,24 @@ export default function BlockEditor({
               if (i === 0) {
                 return;
               }
-              setBlocks((blocks) =>
-                blocks
+              if (
+                blocks[i - 1].startsWith("$$") ||
+                blocks[i - 1].startsWith("```")
+              ) {
+                return;
+              }
+              setBlocks((blocks) => {
+                const effectivePrev =
+                  blocks[i - 1] === "(empty)" ? "" : blocks[i - 1];
+                const effectiveCurr = blocks[i] === "(empty)" ? "" : blocks[i];
+                cursorRef.current = effectivePrev.length;
+                const replacement =
+                  (effectivePrev + effectiveCurr).trim() || "(empty)";
+                return blocks
                   .slice(0, i - 1)
-                  .concat([blocks[i - 1] + blocks[i]])
-                  .concat(blocks.slice(i + 1))
-              );
+                  .concat([replacement])
+                  .concat(blocks.slice(i + 1));
+              });
               setEditingIndex((index) => index! - 1);
               break;
 
@@ -122,6 +142,7 @@ export default function BlockEditor({
                   .concat([update.content])
                   .concat(blocks.slice(i + 1))
               );
+              break;
 
             case "undo":
               undo();
@@ -144,7 +165,10 @@ export default function BlockEditor({
         );
       })}
       <button
-        onClick={() => setContent(content + "\n\n(empty)\n\n")}
+        onClick={() => {
+          setBlocks((blocks) => blocks.concat(["(empty)"]));
+          setEditingIndex(blocks.length);
+        }}
         className="button"
         style={{ marginLeft: "12px", marginTop: "12px", border: 0 }}
       >

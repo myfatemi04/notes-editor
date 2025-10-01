@@ -214,7 +214,6 @@ export default function App() {
           key={currentPath} // reset editor state when switching files
           content={content}
           setContent={setContent}
-          disabled={!currentPath || loading}
         />
       </main>
 

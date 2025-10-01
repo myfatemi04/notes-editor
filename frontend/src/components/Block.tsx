@@ -67,20 +67,6 @@ function getBlockType(content: string): "text" | "code" | "math" | "canvas" {
   return "text";
 }
 
-function codeTextareaContentToContent(
-  content: string,
-  language: string
-): string {
-  return "```" + language + "\n" + content.replace(/`/g, "\\`") + "```";
-}
-function contentToCodeTextareaContent(content: string): string {
-  const code = content.slice(
-    content.indexOf("\n") + 1,
-    content.lastIndexOf("\n```")
-  );
-  return code.replace(/\\`$/, "`");
-}
-
 export default memo(
   function Block(props: BlockProps) {
     let inner: JSX.Element;
@@ -88,16 +74,31 @@ export default memo(
     switch (getBlockType(props.content)) {
       case "code":
         inner = <TextBlock {...props} blockType="code" />;
+        break;
       case "math":
         inner = <TextBlock {...props} blockType="math" />;
+        break;
       case "text":
         inner = <TextBlock {...props} blockType="text" />;
+        break;
       case "canvas":
         inner = (
           <CanvasHostContext.Provider
             value={{
-              setB64: setFromTextareaContent,
-              b64: textareaContent,
+              setB64: (b64: string) => {
+                if (b64.length === 0) {
+                  props.update({ type: "replace", replacements: [] });
+                } else {
+                  props.update({
+                    type: "set_content",
+                    content: `![@canvas](${CANVAS_URL_BASE}${b64})`,
+                  });
+                }
+              },
+              b64: props.content.slice(
+                props.content.indexOf("(") + 1 + CANVAS_URL_BASE.length,
+                -1
+              ),
               editing: props.editing,
             }}
           >
@@ -116,7 +117,6 @@ export default memo(
           paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
           display: "flex",
           alignItems: "center",
-          minHeight: "10px",
         }}
         onClick={() => !props.editing && props.setEditing(true)}
       >

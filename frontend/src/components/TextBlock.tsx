@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { ChangeEvent, useCallback, useEffect, useRef } from "react";
 import { BlockProps, Update } from "./Block";
+import { processor } from "./BlockEditor";
 import getPasteListener from "./pasteAsHTML";
-import { post } from "./rmd-modified";
+import { createFile, post } from "./rmd-modified";
 
 const EMPTY_SPECIAL_STRING = "(empty)";
 
@@ -42,6 +43,23 @@ function checkBackspaceEditHook(
   const textarea = event.target as HTMLTextAreaElement;
   if (textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
     update({ type: "merge_previous" });
+    return true;
+  }
+}
+
+function checkBackspaceMathCodeEditHook(
+  event: KeyboardEvent,
+  update: (update: Update) => void
+) {
+  if (event.key !== "Backspace") return;
+
+  const textarea = event.target as HTMLTextAreaElement;
+  if (textarea.selectionStart !== textarea.selectionEnd) {
+    return;
+  }
+
+  if (textarea.value.length === 0) {
+    update({ type: "set_content", content: "(empty)" });
     return true;
   }
 }
@@ -218,22 +236,24 @@ function checkListEditHook(
   }
 }
 
+// Not the culprit.
 function makeEditHook(update: (update: Update) => void, isRichText: boolean) {
   return (e: KeyboardEvent) => {
     if (
       // Order matters. Pressing enter in a list should add a new list item, while pressing enter outside should split the block.
       checkUndoEditHook(e, update) ||
-      (isRichText &&
-        (checkBackspaceEditHook(e, update) ||
+      (isRichText
+        ? checkBackspaceEditHook(e, update) ||
           checkListEditHook(e, update) ||
-          checkEnterEditHook(e, update)))
+          checkEnterEditHook(e, update)
+        : checkBackspaceMathCodeEditHook(e, update))
     ) {
       e.preventDefault();
     }
   };
 }
 
-function TextBlockInternal(
+export default function TextBlock(
   props: BlockProps & { blockType: "code" | "text" | "math" }
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -260,6 +280,28 @@ function TextBlockInternal(
       textarea.removeEventListener("keydown", navigationHook);
     };
   }, [props.update, props.editPrevious, props.editNext, props.blockType]);
+
+  const onChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      let content = e.target.value;
+      if (props.blockType === "code") {
+        content =
+          props.content.slice(0, props.content.indexOf("\n")) +
+          "\n" +
+          content +
+          "\n```";
+      } else if (props.blockType === "math") {
+        content = "$$" + "\n" + content + "\n$$";
+      } else if (content.trim() === "") {
+        content = EMPTY_SPECIAL_STRING;
+      } else {
+        content = content.replace(/\`\`\`/g, "\\`\\`\\`");
+        content = content.replace(/\$\$/g, "$ $");
+      }
+      props.update({ type: "set_content", content });
+    },
+    [props.update]
+  );
 
   if (textareaRef.current) {
     const textarea = textareaRef.current;
@@ -290,12 +332,32 @@ function TextBlockInternal(
     [props.update]
   );
 
+  let textareaContent: string;
+  if (props.blockType === "code") {
+    const code = props.content.slice(
+      props.content.indexOf("\n") + 1,
+      props.content.lastIndexOf("\n```")
+    );
+    textareaContent = code.replace(/\\`$/, "`");
+  } else if (props.blockType === "math") {
+    textareaContent = props.content.slice(2, props.content.length - 2).trim();
+  } else if (props.content === EMPTY_SPECIAL_STRING) {
+    textareaContent = "";
+  } else {
+    textareaContent = props.content;
+  }
+
+  // Not the culprit.
+  const file = createFile({ children: props.content });
+  const tree = processor.parse(file);
+
   return (
     <>
       <div
         style={{
           flex: 1,
           display: props.editing ? "block" : "none",
+          paddingTop: "6px",
         }}
       >
         {/* Mutually exclusive. */}
@@ -322,8 +384,8 @@ function TextBlockInternal(
         <textarea
           className="textarea-for-block"
           value={textareaContent}
-          onChange={onChange}
           ref={textareaRef}
+          onChange={onChange}
         />
       </div>
       <div
@@ -337,13 +399,8 @@ function TextBlockInternal(
           paddingRight: "12px",
         }}
       >
-        {post(
-          processor.runSync({ type: "root", children: [ast] }, file),
-          mdopts
-        )}
+        {post(processor.runSync(tree, file), props.mdopts)}
       </div>
     </>
   );
 }
-
-export default TextBlockInternal;
