@@ -177,19 +177,33 @@ export default function BlockEditor({
               break;
           }
         };
+        const editing = editingIndex === i;
+        const maxWidth = !editing ? "600px" : "1200px";
 
         return (
-          <Block
-            update={update}
-            editing={editingIndex === i}
-            editPrevious={editPrevious}
-            editNext={editNext}
-            setEditing={() => setEditingKey(block.key)}
-            content={block.content}
+          // Moving this outward allows the setEditingIndex callback to be fresh, while having the content of the block memoized.
+          <div
+            style={{
+              borderBottom: "1px solid red",
+              paddingLeft: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
+              paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
+              display: "flex",
+              alignItems: "center",
+            }}
+            onClick={() => !editing && setEditingIndex(i)}
             key={block.key}
-            cursor={cursorRef.current}
-            mdopts={mdopts}
-          />
+          >
+            <Block
+              update={update}
+              editing={editing}
+              editPrevious={editPrevious}
+              editNext={editNext}
+              setEditing={() => setEditingIndex(i)}
+              content={block.content}
+              cursor={cursorRef.current}
+              mdopts={mdopts}
+            />
+          </div>
         );
       })}
       <button

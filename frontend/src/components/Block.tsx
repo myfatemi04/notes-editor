@@ -106,22 +106,7 @@ export default memo(
         );
     }
 
-    const maxWidth = !props.editing ? "600px" : "1200px";
-
-    return (
-      <div
-        style={{
-          borderBottom: "1px solid red",
-          paddingLeft: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
-          paddingRight: `calc(max((100% - ${maxWidth}) / 2, 12px))`,
-          display: "flex",
-          alignItems: "center",
-        }}
-        onClick={() => !props.editing && props.setEditing(true)}
-      >
-        {inner}
-      </div>
-    );
+    return inner;
   },
   // Always change if editing.
   // Otherwise, only change if content changed.
