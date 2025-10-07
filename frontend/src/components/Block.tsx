@@ -41,7 +41,6 @@ export interface BlockProps {
   content: string;
   update: (update: Update) => void;
   cursor: number;
-  index: number;
   mdopts: MarkdownOptions;
 }
 const CANVAS_URL_BASE = "data:image/minicanvas;base64,";
@@ -127,11 +126,6 @@ export default memo(
   // Always change if editing.
   // Otherwise, only change if content changed.
   (prev, next) => {
-    return (
-      prev.editing === next.editing &&
-      prev.content === next.content &&
-      // Shift effects
-      prev.index === next.index
-    );
+    return prev.editing === next.editing && prev.content === next.content;
   }
 );

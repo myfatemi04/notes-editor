@@ -10,6 +10,11 @@ export const processor = createProcessor({
   rehypePlugins: [rehypeKatex],
 });
 
+interface Block {
+  content: string;
+  key: string;
+}
+
 export default function BlockEditor({
   content,
   setContent,
@@ -31,9 +36,9 @@ export default function BlockEditor({
   unwrapDisallowed?: boolean | undefined;
   urlTransform?: ((url: string) => string) | undefined;
 }) {
-  const [blocks, setBlocks] = useState<string[]>([]);
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const previousValuesRef = useRef<string[][]>([]);
+  const previousValuesRef = useRef<Block[][]>([]);
   const cursorRef = useRef<number>(0);
 
   const parse = useCallback((content: string) => {
@@ -48,7 +53,11 @@ export default function BlockEditor({
             )
           : null
       )
-      .filter((x) => x !== null);
+      .filter((x) => x !== null)
+      .map((content) => ({
+        content,
+        key: Math.random().toString(36).substring(2, 15),
+      }));
   }, []);
 
   // Parse during first render.
@@ -61,7 +70,7 @@ export default function BlockEditor({
     if (previousValuesRef.current.length > 100) {
       previousValuesRef.current.shift();
     }
-    setContent(blocks.map((b) => b.trim()).join("\n\n") + "\n\n");
+    setContent(blocks.map((b) => b.content.trim()).join("\n\n") + "\n\n");
   }, [blocks]);
 
   const undo = useCallback(() => {
@@ -86,22 +95,38 @@ export default function BlockEditor({
   };
 
   const editPrevious = useCallback(() => {
+    cursorRef.current = -1;
     setEditingIndex((i) => (i! > 0 ? i! - 1 : i));
   }, []);
   const editNext = useCallback(() => {
+    cursorRef.current = 0;
     setEditingIndex((i) => (i! < blocks.length - 1 ? i! + 1 : i));
   }, [blocks.length]);
+  const setEditingKey = useCallback(
+    (key: string) => {
+      const index = blocks.findIndex((b) => b.key === key);
+      if (index !== -1) {
+        setEditingIndex(index);
+      }
+    },
+    [blocks]
+  );
 
   return (
     <div style={{ overflowY: "auto" }}>
-      {blocks.map((content, i) => {
+      {blocks.map((block, i) => {
         const update = (update: Update) => {
           switch (update.type) {
             case "replace":
               setBlocks((blocks) =>
                 blocks
                   .slice(0, i)
-                  .concat(update.replacements)
+                  .concat(
+                    update.replacements.map((content) => ({
+                      content,
+                      key: Math.random().toString(36).substring(2, 15),
+                    }))
+                  )
                   .concat(blocks.slice(i + 1))
               );
 
@@ -115,21 +140,24 @@ export default function BlockEditor({
                 return;
               }
               if (
-                blocks[i - 1].startsWith("$$") ||
-                blocks[i - 1].startsWith("```")
+                blocks[i - 1].content.startsWith("$$") ||
+                blocks[i - 1].content.startsWith("```")
               ) {
                 return;
               }
               setBlocks((blocks) => {
                 const effectivePrev =
-                  blocks[i - 1] === "(empty)" ? "" : blocks[i - 1];
-                const effectiveCurr = blocks[i] === "(empty)" ? "" : blocks[i];
+                  blocks[i - 1].content === "(empty)"
+                    ? ""
+                    : blocks[i - 1].content;
+                const effectiveCurr =
+                  blocks[i].content === "(empty)" ? "" : blocks[i].content;
                 cursorRef.current = effectivePrev.length;
                 const replacement =
                   (effectivePrev + effectiveCurr).trim() || "(empty)";
                 return blocks
                   .slice(0, i - 1)
-                  .concat([replacement])
+                  .concat([{ content: replacement, key: blocks[i - 1].key }])
                   .concat(blocks.slice(i + 1));
               });
               setEditingIndex((index) => index! - 1);
@@ -139,7 +167,7 @@ export default function BlockEditor({
               setBlocks((blocks) =>
                 blocks
                   .slice(0, i)
-                  .concat([update.content])
+                  .concat([{ content: update.content, key: blocks[i].key }])
                   .concat(blocks.slice(i + 1))
               );
               break;
@@ -152,13 +180,13 @@ export default function BlockEditor({
 
         return (
           <Block
-            index={i}
             update={update}
             editing={editingIndex === i}
             editPrevious={editPrevious}
             editNext={editNext}
-            setEditing={() => setEditingIndex(i)}
-            content={content}
+            setEditing={() => setEditingKey(block.key)}
+            content={block.content}
+            key={block.key}
             cursor={cursorRef.current}
             mdopts={mdopts}
           />
@@ -166,7 +194,14 @@ export default function BlockEditor({
       })}
       <button
         onClick={() => {
-          setBlocks((blocks) => blocks.concat(["(empty)"]));
+          setBlocks((blocks) =>
+            blocks.concat([
+              {
+                content: "(empty)",
+                key: Math.random().toString(36).substring(2, 15),
+              },
+            ])
+          );
           setEditingIndex(blocks.length);
         }}
         className="button"
