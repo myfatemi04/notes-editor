@@ -190,7 +190,12 @@ export default function BlockEditor({
               display: "flex",
               alignItems: "center",
             }}
-            onClick={() => !editing && setEditingIndex(i)}
+            onClick={() => {
+              if (!editing) {
+                cursorRef.current = 0;
+                setEditingIndex(i);
+              }
+            }}
             key={block.key}
           >
             <Block
