@@ -214,6 +214,22 @@ function checkListEditHook(
       return true;
     }
 
+    // Check if the current item's content is empty (after the marker) and
+    // this list item is the last one (the `end` property is the last of its kind)
+    if (
+      currentItem.body.trim() === currentItem.marker &&
+      currentItem.end === end
+    ) {
+      // Remove this list item.
+      const before = textarea.value.slice(0, currentItem.start).trimEnd();
+      update({
+        type: "set_content",
+        content: before === "" ? EMPTY_SPECIAL_STRING : before,
+      });
+      update({ type: "insert_after" });
+      return true;
+    }
+
     // Add a new list item with the same indentation and marker.
     const newListItemPrefix =
       "\n" + " ".repeat(currentItem.indent) + currentItem.marker + " ";
