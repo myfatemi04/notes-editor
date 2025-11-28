@@ -133,6 +133,8 @@ export default function BlockEditor({
               setEditingIndex(
                 (index) => index! + update.replacements.length - 1
               );
+              // Move cursor to the start of the block.
+              cursorRef.current = 0;
               break;
 
             case "merge_previous":
