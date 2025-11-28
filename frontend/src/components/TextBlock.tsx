@@ -3,10 +3,15 @@ import { BlockProps, Update } from "./Block";
 import { processor } from "./BlockEditor";
 import getPasteListener from "./pasteAsHTML";
 import { createFile, post } from "./rmd-modified";
+import e from "express";
 
 const EMPTY_SPECIAL_STRING = "(empty)";
 
-function makeNavigationHook(editPrevious: () => void, editNext: () => void) {
+function makeNavigationHook(
+  editPrevious: () => void,
+  editNext: () => void,
+  editNone: () => void
+) {
   return (e: KeyboardEvent) => {
     const target = e.target as HTMLTextAreaElement;
     if (target.selectionStart !== target.selectionEnd) {
@@ -25,6 +30,8 @@ function makeNavigationHook(editPrevious: () => void, editNext: () => void) {
       editPrevious();
     } else if (e.key === "ArrowRight" && cursor === target.value.length) {
       editNext();
+    } else if (e.key === "Escape") {
+      editNone();
     } else {
       // Nothing special, so return. Otherwise, preventDefault.
       return;
@@ -236,7 +243,16 @@ function checkListEditHook(
   }
 }
 
-// Not the culprit.
+function checkForceInsertMathCodeEditHook(
+  e: KeyboardEvent,
+  update: (update: Update) => void
+) {
+  if (e.key === "Enter" && e.shiftKey) {
+    update({ type: "insert_after" });
+    e.preventDefault();
+  }
+}
+
 function makeEditHook(update: (update: Update) => void, isRichText: boolean) {
   return (e: KeyboardEvent) => {
     if (
@@ -246,7 +262,8 @@ function makeEditHook(update: (update: Update) => void, isRichText: boolean) {
         ? checkBackspaceEditHook(e, update) ||
           checkListEditHook(e, update) ||
           checkEnterEditHook(e, update)
-        : checkBackspaceMathCodeEditHook(e, update))
+        : checkBackspaceMathCodeEditHook(e, update)) ||
+      checkForceInsertMathCodeEditHook(e, update)
     ) {
       e.preventDefault();
     }
@@ -267,7 +284,8 @@ export default function TextBlock(
     const editHook = makeEditHook(props.update, props.blockType === "text");
     const navigationHook = makeNavigationHook(
       props.editPrevious,
-      props.editNext
+      props.editNext,
+      () => props.setEditing(false)
     );
     const pasteListener = getPasteListener();
     textarea.addEventListener("paste", pasteListener);

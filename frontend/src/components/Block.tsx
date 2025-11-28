@@ -1,6 +1,5 @@
 import { memo } from "react";
 import Canvas, { CanvasHostContext } from "./Canvas";
-import { post } from "./rmd-modified";
 import TextBlock from "./TextBlock";
 
 export interface MergePreviousUpdate {
@@ -17,11 +16,15 @@ export interface ReplaceUpdate {
 export interface UndoUpdate {
   type: "undo";
 }
+export interface InsertAfterUpdate {
+  type: "insert_after";
+}
 export type Update =
   | MergePreviousUpdate
   | SetContentUpdate
   | ReplaceUpdate
-  | UndoUpdate;
+  | UndoUpdate
+  | InsertAfterUpdate;
 
 export interface MarkdownOptions {
   allowedElements?: string[] | undefined;

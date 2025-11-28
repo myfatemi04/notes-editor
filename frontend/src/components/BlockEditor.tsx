@@ -172,6 +172,22 @@ export default function BlockEditor({
               );
               break;
 
+            case "insert_after":
+              setBlocks((blocks) =>
+                blocks
+                  .slice(0, i + 1)
+                  .concat([
+                    {
+                      content: "(empty)",
+                      key: Math.random().toString(36).substring(2, 15),
+                    },
+                  ])
+                  .concat(blocks.slice(i + 1))
+              );
+              setEditingIndex(i + 1);
+              cursorRef.current = 0;
+              break;
+
             case "undo":
               undo();
               break;
@@ -203,7 +219,9 @@ export default function BlockEditor({
               editing={editing}
               editPrevious={editPrevious}
               editNext={editNext}
-              setEditing={() => setEditingIndex(i)}
+              setEditing={(editing) =>
+                editing ? setEditingIndex(i) : setEditingIndex(null)
+              }
               content={block.content}
               cursor={cursorRef.current}
               mdopts={mdopts}
