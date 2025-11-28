@@ -358,7 +358,7 @@ export default function TextBlock(
     );
     textareaContent = code.replace(/\\`$/, "`");
   } else if (props.blockType === "math") {
-    textareaContent = props.content.slice(2, props.content.length - 2).trim();
+    textareaContent = props.content.slice(3, props.content.length - 3);
   } else if (props.content === EMPTY_SPECIAL_STRING) {
     textareaContent = "";
   } else {
